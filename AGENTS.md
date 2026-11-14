@@ -64,6 +64,10 @@ websockets unless a task brief says otherwise. Keep dependencies minimal.
   (~40 trials) and label every output "pipeline verification — synthetic data."
   Never present synthetic metrics as model quality or real-world accuracy.
 - Popularity/request counts must never be ranking features.
+- **Dataset split: 80% train / 20% test** (owner's rule). Split by event or by
+  interaction group — records from the same interaction must never appear on both
+  sides; where event-level splitting is impossible, use a chronological holdout.
+  Every experiment report must state the split actually used.
 
 ## Engineering rules
 
