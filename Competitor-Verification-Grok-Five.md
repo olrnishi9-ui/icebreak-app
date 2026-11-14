@@ -1,0 +1,38 @@
+# Competitor Verification — Grok's Five
+
+*Checked by Muse via web search + page fetches, 2026-11-14. Each entry: does it
+exist, what it does, whether it runs the conversation itself, platform/pricing,
+and a checkable source. Anything not confirmable is marked UNVERIFIED.
+Corrections to Grok's original claims are flagged.*
+
+## Summary table
+
+| Product | Exists? | What it does (one line) | Runs the conversation? | Platform | Pricing | Source |
+|---|---|---|---|---|---|---|
+| **Wyrl** | Yes | See who's actually checked in at an event, view mini-profiles, message nearby attendees, swap digital business cards, post local bulletins / popup events | **No** — stops at discovery + in-app messaging + card exchange | Native apps, iOS + Android (by Unseized LLC); event discovery on the web | Free for attendees (Product Hunt lists $0); organiser pricing UNVERIFIED | producthunt.com/products/wyrl/launches/wyrl ; wyrl.io |
+| **Disco** | Yes (pre-launch, building in public) | Matches people at in-person events by their stated goals (find co-founders, land clients, learn from experts) via profiles | **No evidence of any** — matching/profiles only; no conversation features described | Described as an "app"; no store listing found — platform details UNVERIFIED | UNVERIFIED (not launched) | dev.to/saminarp/building-disco-week-2-making-event-networking-less-random-88h |
+| **Evertwine** | Yes — but **pivoted** | 2025 version: activity-based meetup discovery (hikes, board-game nights, happy hours) to turn shared interests into friendships. **In 2026 it relaunched as a guide to aesthetic restaurants/bars/cafés in Southern California and no longer matches people at all** (its own FAQ) | **No** — meetup discovery/RSVP only, even in its social version | iPhone app (iOS only per its FAQ) | Free | joinevertwine.com/faq ; producthunt.com/products/evertwine/launches/evertwine |
+| **Meetball** | Yes (hackathon project) | Event social network where attendees post what they need ("ask") and what they can offer, so relevant people come to them; built by ~140 contributors on Bolt for the Bolt "World's Largest Hackathon" (2025) | **No** — need/offer posts + discovery; no structured conversation flow | Web app (built on Bolt); seen in use at Web Summit, Nov 2025 | Hackathon prototype; no commercial pricing found (UNVERIFIED beyond that) | devpost.com software listings (search "Meetball"); instagram.com/reel/DQ_9u8RDFjU (Web Summit demo) |
+| **IceBreaker** (BoxHive) | Yes | Event passport app: one personal QR code for check-in, one-scan mutual connection + contact exchange, event programme, exhibitor lead capture | **No** — stops at connection/contact exchange (+ in-app messaging afterwards) | Native app — Android verified (Google Play, updated Nov 5, 2026, by BoxHive Digital Solutions Co.); iOS presence claimed but **UNVERIFIED** | UNVERIFIED (attendee-facing listing shows no price; organiser pricing not found) | play.google.com/store/apps/details?id=events.icebreaker.blazar |
+
+## Notes and corrections to Grok's claims
+
+- **Wyrl** — Grok's description was accurate (real-time nearby discovery, messaging, popup micro-events, digital cards, free for attendees). Popup events and bulletins are confirmed by the Play Store listing via AppBrain. It is a **download-required native app**, the opposite of our no-download positioning.
+- **Disco** — Grok's description confirmed by the founder's own build log: goal-based matching, building in public since Oct 2025 (Week 2 post dated 2025-10-21), first pilot partnership with **York University** (Toronto). Caution: several unrelated products share the name (godisco.app is a sports-fan meetup app — not this one). Disco is explicitly aimed at introverts ("As an introvert, I've always found networking events overwhelming"), making it the closest in *target user*, but it stops at profiles/goals matching.
+- **Evertwine** — Grok's "launched Jan 2025" is imprecise: App Store release was **Dec 18, 2024**, Product Hunt launch **June 6, 2025**; it began in 2023 as a dating-app idea. The bigger correction: **the social/meetup product no longer exists** — its own FAQ states it relaunched in 2026 as a venue guide and "does not match you with people." As a current competitor in event social discovery, it has effectively exited.
+- **Meetball** — Grok's description confirmed (flips networking: post a need, people come to you; Devpost, Bolt Hackathon 2025). The direct Devpost project-page URL could not be surfaced via search; existence and description are confirmed across multiple Devpost listing pages and a participant portfolio page. It is a one-off hackathon build, not a maintained commercial product, as far as sources show.
+- **IceBreaker** — Two different products use this name. The one matching Grok's description is **BoxHive's** event app (Google Play: "IceBreaker Events & Networking") — QR passport, one-scan connect, contact swap, agenda. A third-party listicle claims it also offers a "tailored prompt" conversation starter; that claim appears only in that low-quality roundup and **not** in the store listing — treat as UNVERIFIED. Separately, **ice-breaker.pro** is an unrelated web-based venue product (QR table tents, ephemeral profiles) — name collision only, not the App Store app Grok meant.
+
+## Closeness to our product (one line each)
+
+*Our reference: no-download web app, guest join <30s, availability board,
+invitation with invisible rejection, assigned meeting point, four-card
+conversation arc.*
+
+- **Wyrl** — Closest on real-time "who is here now" discovery, but it's a native-app download with open messaging and no availability consent, no meeting-point assignment, and no conversation structure.
+- **Disco** — Closest on intent (goal-based matching, explicitly for introverts) but stops at matching; no availability, no invitation flow, no conversation layer, and not yet launched.
+- **Evertwine** — Not close anymore: it was activity-meetup discovery, and its 2026 pivot to a venue guide removes it from this space entirely.
+- **Meetball** — Closest on mechanism inversion (post a need → people come to you ≈ our topic-framed availability), but it's an unmaintained hackathon prototype with no consent/invisible-rejection design and no conversation arc.
+- **IceBreaker (BoxHive)** — Closest on QR mechanics (one scan = connected) but it's an organiser-run native event app for check-in and contact capture; no availability board, no shy-user consent design, no conversation support.
+
+**Bottom line:** all five stop at discovery, matching, or contact exchange. None runs the conversation itself, none has an availability board with invisible rejection, and none assigns a meeting point plus a structured conversation arc. Grok's original framing — "none of these runs the conversation itself; all still lean on download/check-in" — holds up under verification, with the Evertwine pivot and the IceBreaker name collision as the two corrections worth knowing.
