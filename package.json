@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test": "node --import tsx --test tests/*.test.mjs",
-    "test:browser": "node --test tests/browser.smoke.mjs"
+    "test:browser": "node --test tests/browser.smoke.mjs",
+    "test:connections:browser": "node --import tsx --test tests/connections.browser.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

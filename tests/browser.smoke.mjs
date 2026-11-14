@@ -78,6 +78,7 @@ test("S1–S3 browser states, optional setup, edits, poll recovery, restore and 
           status: "active",
           active: true,
         };
+      else if (path === "/api/connections") data = {shortCode:"ABCD1234",incoming:[],outgoing:[],session:null};
       else if (path.endsWith("/questions")) data = questions;
       else if (path === "/api/events/join") {
         joined = true;

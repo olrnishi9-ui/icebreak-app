@@ -12,5 +12,6 @@ function adapter(p: Prisma.TransactionClient): DB {
 }
 export const database: DB = {
   query: (sql, values = []) => client().$queryRawUnsafe(sql, ...values),
-  transaction: (fn) => client().$transaction((p) => fn(adapter(p))),
+  transaction: (fn) =>
+    client().$transaction((p: Prisma.TransactionClient) => fn(adapter(p))),
 };

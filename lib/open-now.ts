@@ -19,6 +19,7 @@ export type Candidate = {
   answers: Answer[];
 };
 export type OpenEntry = {
+  participantId?: string;
   displayName: string;
   goalLine: string;
   chip?: string;
@@ -30,6 +31,7 @@ export function openNow(
   questions: Question[],
   now: number,
   tie: (id: string) => number,
+  actionable = false,
 ): OpenEntry[] {
   return candidates
     .filter(
@@ -53,7 +55,11 @@ export function openNow(
       const choice = caller.answers.find(
         (a) => a.questionId === first?.id,
       )?.choice;
-      const entry: OpenEntry = { displayName: p.displayName, goalLine: p.goal };
+      const entry: OpenEntry = {
+        ...(actionable ? { participantId: p.id } : {}),
+        displayName: p.displayName,
+        goalLine: p.goal,
+      };
       if (first && choice != null) entry.chip = first.options[choice];
       return {
         entry,
