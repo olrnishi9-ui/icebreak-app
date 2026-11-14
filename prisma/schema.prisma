@@ -1,0 +1,228 @@
+// SQL migrations additionally enforce Auth linkage, RLS, checks and triggers.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum EventStatus {
+  draft
+  active
+  ended
+}
+
+enum AvailabilityStatus {
+  unavailable
+  open
+  busy
+}
+
+enum QuestionKind {
+  preference
+  event_goal
+}
+
+enum InterestType {
+  interest
+  discuss
+  help
+  learn
+  ask_me_about
+}
+
+enum ContactField {
+  email
+  phone
+  linkedin
+  website
+}
+
+enum ContactVisibility {
+  private
+  mutual_connection
+}
+
+enum RequestStatus {
+  pending
+  accepted
+}
+
+enum RequestDecision {
+  accepted
+  declined
+}
+
+model users {
+  organized_events events[]             @relation("relation_0_organizer")
+  memberships      event_participants[] @relation("relation_2_user")
+  contacts         user_contacts[]      @relation("relation_7_user")
+  feedback         feedback[]           @relation("relation_16_author")
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auth_id          String?              @unique @db.Uuid
+  display_name     String               @db.VarChar(80)
+  bio              String?
+  is_guest         Boolean              @default(true)
+  created_at       DateTime             @default(now()) @db.Timestamptz(6)
+}
+
+model events {
+  organizer    users                @relation("relation_0_organizer", fields: [organizer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  participants event_participants[] @relation("relation_1_event")
+  questions    questions[]          @relation("relation_3_event")
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_code   String               @unique @db.VarChar(16)
+  name         String
+  status       EventStatus          @default(draft)
+  organizer_id String               @db.Uuid
+  ends_at      DateTime?            @db.Timestamptz(6)
+  created_at   DateTime             @default(now()) @db.Timestamptz(6)
+
+  @@index([organizer_id])
+}
+
+model event_participants {
+  event               events                @relation("relation_1_event", fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user                users                 @relation("relation_2_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  answers             answers[]             @relation("relation_4_participant")
+  interests           user_interests[]      @relation("relation_6_participant")
+  sent_requests       connection_requests[] @relation("relation_8_sender")
+  received_requests   connection_requests[] @relation("relation_9_recipient")
+  recommendations     recommendations[]     @relation("relation_11_participant")
+  suggested_in        recommendations[]     @relation("relation_12_suggested_participant")
+  interactions_as_a   interactions[]        @relation("relation_13_participant_a")
+  interactions_as_b   interactions[]        @relation("relation_14_participant_b")
+  event_id            String                @db.Uuid
+  user_id             String                @db.Uuid
+  availability_status AvailabilityStatus    @default(unavailable)
+  available_until     DateTime?             @db.Timestamptz(6)
+  joined_at           DateTime              @default(now()) @db.Timestamptz(6)
+
+  @@id([event_id, user_id])
+  @@index([user_id])
+}
+
+model questions {
+  event    events       @relation("relation_3_event", fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  answers  answers[]    @relation("relation_5_question")
+  id       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id String       @db.Uuid
+  kind     QuestionKind
+  prompt   String
+  options  String[]
+  position Int
+
+  @@unique([event_id, position])
+  @@unique([event_id, id])
+}
+
+model answers {
+  participant  event_participants @relation("relation_4_participant", fields: [event_id, user_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  question     questions          @relation("relation_5_question", fields: [event_id, question_id], references: [event_id, id], onDelete: Cascade, onUpdate: NoAction)
+  event_id     String             @db.Uuid
+  user_id      String             @db.Uuid
+  question_id  String             @db.Uuid
+  option_index Int?
+  skipped      Boolean            @default(false)
+  created_at   DateTime           @default(now()) @db.Timestamptz(6)
+
+  @@id([event_id, user_id, question_id])
+  @@index([event_id, question_id])
+}
+
+model user_interests {
+  participant   event_participants @relation("relation_6_participant", fields: [event_id, user_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id      String             @db.Uuid
+  user_id       String             @db.Uuid
+  interest_type InterestType
+  topic         String             @db.VarChar(200)
+  share_consent Boolean            @default(false)
+
+  @@unique([event_id, user_id, interest_type, topic])
+}
+
+model user_contacts {
+  user          users             @relation("relation_7_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String            @db.Uuid
+  field         ContactField
+  value         String
+  visibility    ContactVisibility @default(private)
+  share_consent Boolean           @default(false)
+  consented_at  DateTime?         @db.Timestamptz(6)
+
+  @@unique([user_id, field])
+}
+
+model connection_requests {
+  sender            event_participants             @relation("relation_8_sender", fields: [event_id, sender_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  recipient         event_participants             @relation("relation_9_recipient", fields: [event_id, recipient_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  private_decisions connection_request_decisions[] @relation("relation_10_request")
+  id                String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id          String                         @db.Uuid
+  sender_id         String                         @db.Uuid
+  recipient_id      String                         @db.Uuid
+  status            RequestStatus                  @default(pending)
+  created_at        DateTime                       @default(now()) @db.Timestamptz(6)
+  expires_at        DateTime                       @db.Timestamptz(6)
+
+  @@unique([id, recipient_id])
+  @@index([event_id, sender_id])
+  @@index([event_id, recipient_id])
+}
+
+model connection_request_decisions {
+  request      connection_requests @relation("relation_10_request", fields: [request_id, recipient_id], references: [id, recipient_id], onDelete: Cascade, onUpdate: NoAction)
+  request_id   String              @id @db.Uuid
+  recipient_id String              @db.Uuid
+  decision     RequestDecision
+  created_at   DateTime            @default(now()) @db.Timestamptz(6)
+}
+
+model recommendations {
+  participant           event_participants @relation("relation_11_participant", fields: [event_id, user_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  suggested_participant event_participants @relation("relation_12_suggested_participant", fields: [event_id, suggested_user_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id              String             @db.Uuid
+  user_id               String             @db.Uuid
+  suggested_user_id     String             @db.Uuid
+  score_internal        Float              @db.DoublePrecision
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+
+  @@unique([event_id, user_id, suggested_user_id])
+  @@index([event_id, suggested_user_id])
+}
+
+model interactions {
+  participant_a event_participants @relation("relation_13_participant_a", fields: [event_id, user_a_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  participant_b event_participants @relation("relation_14_participant_b", fields: [event_id, user_b_id], references: [event_id, user_id], onDelete: Cascade, onUpdate: NoAction)
+  feedback      feedback[]         @relation("relation_15_interaction")
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id      String             @db.Uuid
+  user_a_id     String             @db.Uuid
+  user_b_id     String             @db.Uuid
+  started_at    DateTime           @default(now()) @db.Timestamptz(6)
+  ended_at      DateTime?          @db.Timestamptz(6)
+
+  @@index([event_id, user_a_id])
+  @@index([event_id, user_b_id])
+}
+
+model feedback {
+  interaction              interactions @relation("relation_15_interaction", fields: [interaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author                   users        @relation("relation_16_author", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  interaction_id           String       @db.Uuid
+  user_id                  String       @db.Uuid
+  conversation_ease        Int          @db.SmallInt
+  perceived_value          Int          @db.SmallInt
+  willingness_to_reconnect Boolean
+  created_at               DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@unique([interaction_id, user_id])
+  @@index([user_id])
+}
