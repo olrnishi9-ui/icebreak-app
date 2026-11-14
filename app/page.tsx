@@ -1,18 +1,66 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Header, ErrorMessage } from "./components/shared";
 export default function Home() {
-  return <main className="mx-auto flex min-h-dvh max-w-5xl flex-col px-6 py-10 sm:px-12">
-    <header className="text-xl font-bold tracking-tight">icebreak<span aria-hidden="true" className="text-teal-700"> ✳</span></header>
-    <section className="my-auto grid gap-12 py-20 sm:grid-cols-2 sm:items-center">
-      <div><p className="mb-4 text-sm font-bold uppercase tracking-widest text-teal-800">Same event. A new hello.</p>
-      <h1 className="text-6xl leading-tight sm:text-7xl">Break the ice.<br />At your pace.</h1>
-      <p className="mt-6 max-w-sm text-lg leading-relaxed">A little common ground for the people in the room. Start with your event code.</p></div>
-      <form action="/join" method="get" className="rounded-3xl border border-sky-200 bg-white p-8 shadow-sm">
-        <h2 className="mb-7 text-3xl">Join Event</h2>
-        <label htmlFor="event-code" className="mb-2 block font-bold">Event code</label>
-        <input id="event-code" name="code" required maxLength={16} autoComplete="off" placeholder="e.g. HELLO26" className="w-full rounded-lg border border-slate-400 px-4 py-3 uppercase tracking-widest" />
-        <button className="mt-5 w-full rounded-lg bg-teal-800 px-4 py-3 font-bold text-white hover:bg-teal-900" type="submit">Join Event <span aria-hidden="true">→</span></button>
-        <p className="mt-4 text-sm text-slate-600">You’ll find the code with your event host.</p>
-      </form>
-    </section>
-    <footer className="text-sm text-slate-600">A first hello is enough.</footer>
-  </main>;
+  const [error, setError] = useState("");
+  const [last, setLast] = useState("");
+  useEffect(() => setLast(localStorage.getItem("icebreak-event") || ""), []);
+  return (
+    <>
+      <Header />
+      <main className="landing">
+        <section>
+          <p className="eyebrow">In the same room. Ready for a hello.</p>
+          <h1>
+            Make room
+            <br />
+            for someone new.
+          </h1>
+          <p className="intro">
+            A small way to say you’re open to chat.
+            <br />
+            Join your event with a name and a goal.
+          </p>
+        </section>
+        <section className="panel ticket">
+          <p className="eyebrow">Your event invitation</p>
+          <h2>Come on in.</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const code = String(new FormData(e.currentTarget).get("code"))
+                .trim()
+                .toUpperCase();
+              if (!/^[A-Z0-9]{4,16}$/.test(code))
+                setError("Enter the event code from your organiser.");
+              else location.assign(`/join/${code}`);
+            }}
+          >
+            <label>
+              Event code
+              <input
+                name="code"
+                required
+                maxLength={16}
+                autoCapitalize="characters"
+                placeholder="HELLO26"
+                autoComplete="off"
+              />
+            </label>
+            <ErrorMessage message={error} />
+            <button>Join event</button>
+          </form>
+          {last && (
+            <a className="text-link" href={`/event/${last}`}>
+              Return to your event →
+            </a>
+          )}
+          <p className="quiet">No email. No password. Just you.</p>
+        </section>
+        <a className="text-link" href="/organiser">
+          Organising an event? Create your invitation →
+        </a>
+      </main>
+    </>
+  );
 }

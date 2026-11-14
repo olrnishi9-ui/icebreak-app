@@ -15,6 +15,7 @@ test('migration, repeatable seed, integrity and browser-role privacy', async t =
     GRANT USAGE ON SCHEMA auth, public TO anon, authenticated;
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;`);
   await db.exec(await readFile(new URL('../prisma/migrations/202611140001_foundation/migration.sql', import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../prisma/migrations/202611140002_entry_flow/migration.sql', import.meta.url),'utf8'));
   const seed = await readFile(new URL('../prisma/seed.sql', import.meta.url),'utf8');
   await db.exec(seed);
   await db.exec(seed);
