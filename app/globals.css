@@ -1,0 +1,6 @@
+@import "tailwindcss";
+:root { color-scheme: light; background: #edf5fa; color: #19334b; }
+body { margin: 0; font-family: "Trebuchet MS", Arial, sans-serif; }
+h1, h2 { font-family: Georgia, serif; }
+input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #176985; outline-offset: 4px; }
+::selection { background: #b7e7e6; }
