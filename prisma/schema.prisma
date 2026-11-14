@@ -99,6 +99,14 @@ model event_participants {
   user_id             String                @db.Uuid
   availability_status AvailabilityStatus    @default(unavailable)
   available_until     DateTime?             @db.Timestamptz(6)
+  display_name        String                @default("Guest") @db.VarChar(80)
+  goal                String                @default("Just socialize") @db.VarChar(200)
+  field               String                @default("") @db.VarChar(160)
+  fun_fact            String                @default("") @db.VarChar(500)
+  field_visible       Boolean               @default(false)
+  fun_fact_visible    Boolean               @default(false)
+  setup_complete      Boolean               @default(false)
+  opened_at           DateTime?             @db.Timestamptz(6)
   joined_at           DateTime              @default(now()) @db.Timestamptz(6)
 
   @@id([event_id, user_id])
