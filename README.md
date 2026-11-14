@@ -289,3 +289,63 @@ unseen and opened/no-action at before/at/after expiry, checks refresh restoratio
 photo/direction equality, arrival, request retry, offline recovery and cancellation.
 These are **not** hosted Supabase Auth or two-real-phone tests. Executed results
 and environment limitations are recorded in `docs/Task3-Validation.md`.
+
+## Task 4: conversation arc, private closing and My People
+
+The script is built **once at session creation** in the shared accept function
+(board accept, mutual send and code-owner Start). `buildArc` is pure: question
+position ascending (then id) defines lightest material; shared answers precede
+true differences; seek/offer topics precede goals; consented ask-me-about fields
+precede unused material. All field text is verbatim. Without shared/differing
+answers the script is exactly prep, expand, close, with a short-arc notice.
+Profile edits never rewrite a live script. No LLM or neural-network phase is
+implemented; no AI service or key is needed.
+
+Authentication for every route below is the existing Supabase Anonymous Auth
+Bearer session. Every request must specify `eventId` (query for GET/DELETE;
+JSON for writes); membership, event and pair ownership are checked server-side.
+Errors use `{error:string}` and 400/401/404/409; no private decisions appear in
+errors. Notes are capped at 500 characters. Responses use explicit allowlists.
+
+| Method / path | Input | Response / behavior |
+| --- | --- | --- |
+| GET `/api/connections?eventId=…` | Existing contract | `session` now includes `arc: ArcView` from S5 onward and state `meeting`, `started`, or `closing`. A closed conversation stays restorable; the client can privately dismiss it back to the paused room. |
+| GET `/api/sessions/:id/arc?eventId=…` | — | `ArcView`, below. This is the deterministic session-script adaptation of the engineering prompt's `POST /api/icebreaker`, rather than generating a new starter per request. |
+| POST `/api/sessions/:id/arc` | `{eventId,action,position?,choice?,optedIn?}` | Updated `ArcView`. Enum actions: `advance`, `skip`, `wrap-up`, `keep-talking`, `done`. Advance/skip require the displayed integer `position`; stale positions are no-ops, so racing taps advance once. Done accepts `choice: exchange / again / nothing / null` and boolean `optedIn`; the first Done is immutable. Choosing nothing is complete. |
+| PUT `/api/sessions/:id/note` | `{eventId,text}` | `{ok:true}`; creates/edits the author's note only. Empty text deletes. |
+| DELETE `/api/sessions/:id/note?eventId=…` | — | `{ok:true}`; deletes only the author's note. |
+| GET `/api/people?eventId=…` | — | Private entries `{id,displayName,eventName,note,exchanged,contacts:[{field,value}]}` for completed sessions. No metrics. |
+| POST `/api/feedback` | `{eventId,sessionId,conversation_ease?,perceived_value?,willingness_to_reconnect?}` | `{ok:true}`; implements the engineering prompt's feedback endpoint, tied to the session's interaction row + author. Optional ease/value integers 1–5, optional reconnect boolean; absent/null fields stay null. All absent writes no row. First submission wins; no feedback values or existence are returned. |
+
+`ArcView` contains `{script,position,skipped,cardsState,role,side,offered,elapsed,
+phase,own,outcome,contacts,note}`. `script` is `{cards,notice,disclosure}`; cards
+contain fixed framing and verbatim facts (ask-me-about has `aboutA`/`aboutB`
+and, for one-sided material, an unused verbatim `fallback`).
+`role` is starter/listener/symmetric; `side` is the viewer's stored A/B role,
+never a closing actor. `cardsState` is upcoming/current/skipped/done. `own` is
+only the viewer's `{choice,optedIn,done}`. `outcome` is null, mutual `again`, or
+mutual `exchange`. Contact fields appear only after **both Done, both exchange,
+both opt-ins**, and only owner-consented fields marked `mutual_connection`.
+There is no partner-choice, partner-Done, mismatch, feedback or rejection field.
+
+Polling is every three seconds. Offers occur proportionally at 25/55/80 of the
+chosen time box, never advance the card, and signal visually plus vibration where
+supported. A positional compare-and-set under the event transaction lock handles
+racing actions. The client queues actions while disconnected and renders all
+remaining cards from its downloaded script; reconnect reconciles shared state.
+Private choices, notes and feedback require connectivity to save. No offline
+contact release is attempted.
+
+Wrap-up and scheduled closing use one projection and one S7 component. Closing
+normalizes the exposed position, skipped states and elapsed time; no closing
+actor is stored. The data-only reason and resume position have no browser SELECT
+privileges (even `SELECT * FROM sessions` is deliberately denied). The two
+members can select permitted session/script columns under RLS. Notes and choices
+are author-only; feedback SELECT has no participant policy; contact table reads
+remain owner-only. Browser table writes are not granted: validated server routes
+perform mutations. Close releases point occupancy, pauses both participants and
+records pair history; reopening visibility requires an explicit availability tap.
+Keep talking restores the prior card unless either participant has finalized Done
+or either is already in another live session.
+
+Validation and honest environment limitations: `docs/Task4-Validation.md`.

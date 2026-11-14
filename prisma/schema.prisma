@@ -57,6 +57,8 @@ enum RequestDecision {
 }
 
 model users {
+  close_choices session_choices[]
+  private_notes session_notes[]
   organized_events events[]             @relation("relation_0_organizer")
   memberships      event_participants[] @relation("relation_2_user")
   contacts         user_contacts[]      @relation("relation_7_user")
@@ -240,9 +242,9 @@ model feedback {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   interaction_id           String       @db.Uuid
   user_id                  String       @db.Uuid
-  conversation_ease        Int          @db.SmallInt
-  perceived_value          Int          @db.SmallInt
-  willingness_to_reconnect Boolean
+  conversation_ease        Int?         @db.SmallInt
+  perceived_value          Int?         @db.SmallInt
+  willingness_to_reconnect Boolean?
   created_at               DateTime     @default(now()) @db.Timestamptz(6)
 
   @@unique([interaction_id, user_id])
@@ -262,6 +264,8 @@ model meeting_points {
 }
 
 model sessions {
+  close_choices session_choices[]
+  private_notes session_notes[]
   request connection_requests @relation(fields:[request_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
   participant_a event_participants @relation("session_a",fields:[event_id,user_a_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
   participant_b event_participants @relation("session_b",fields:[event_id,user_b_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
@@ -280,6 +284,11 @@ model sessions {
   late_b Boolean @default(false)
   started_at DateTime? @db.Timestamptz(6)
   closed_at DateTime? @db.Timestamptz(6)
+  arc_script Json?
+  arc_position Int @default(0)
+  arc_skipped Int[] @default([])
+  close_reason String?
+  resume_position Int @default(0)
 }
 
 model blocks {
@@ -301,4 +310,23 @@ model reports {
   target_id String @db.Uuid
   category String? @db.VarChar(80)
   created_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model session_choices {
+  session sessions @relation(fields:[session_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+  author users @relation(fields:[user_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+  session_id String @db.Uuid
+  user_id String @db.Uuid
+  choice String?
+  opted_in Boolean @default(false)
+  done Boolean @default(false)
+  @@id([session_id,user_id])
+}
+model session_notes {
+  session sessions @relation(fields:[session_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+  author users @relation(fields:[user_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+  session_id String @db.Uuid
+  user_id String @db.Uuid
+  text String @db.VarChar(500)
+  @@id([session_id,user_id])
 }

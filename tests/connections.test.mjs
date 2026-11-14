@@ -595,10 +595,12 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
       for (const n of [1, 2, 3])
         await f.asUser(n, async () =>
           assert.equal(
+            // Task 4 hides close_reason at column privilege level.
             (
-              await db.query("SELECT * FROM sessions WHERE event_id=$1", [
-                event,
-              ])
+              await db.query(
+                "SELECT id,arc_script,arc_position FROM sessions WHERE event_id=$1",
+                [event],
+              )
             ).length,
             n === 3 ? 0 : 1,
           ),

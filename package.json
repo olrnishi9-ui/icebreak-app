@@ -12,7 +12,8 @@
     "db:seed": "prisma db seed",
     "test": "node --import tsx --test tests/*.test.mjs",
     "test:browser": "node --test tests/browser.smoke.mjs",
-    "test:connections:browser": "node --import tsx --test tests/connections.browser.mjs"
+    "test:connections:browser": "node --import tsx --test tests/connections.browser.mjs",
+    "test:arc:browser": "node --import tsx --test tests/arc.browser.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

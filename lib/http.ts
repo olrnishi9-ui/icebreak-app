@@ -1,3 +1,4 @@
+import { ArcService } from "./arc-service";
 import { ConnectionService } from "./connection-service";
 import { createClient } from "@supabase/supabase-js";
 import { EntryService, HttpError, code, uuid } from "./service";
@@ -66,6 +67,33 @@ export function handler(
       const eventId = () =>
         uuid(url.searchParams.get("eventId") ?? body.eventId);
       const connect = new ConnectionService(db, now);
+      const arc = new ArcService(db, now);
+      if (path[0] === "sessions" && path.length === 3 && path[2] === "arc") {
+        if (method === "GET")
+          return respond(await arc.view(identity, eventId(), path[1]));
+        if (method === "POST")
+          return respond(await arc.action(identity, eventId(), path[1], body));
+      }
+      if (
+        path[0] === "sessions" &&
+        path.length === 3 &&
+        path[2] === "note" &&
+        ["PUT", "DELETE"].includes(method)
+      )
+        return respond(
+          await arc.note(
+            identity,
+            eventId(),
+            path[1],
+            method === "DELETE" ? "" : body.text,
+          ),
+        );
+      if (path.join("/") === "people" && method === "GET")
+        return respond(await arc.people(identity, eventId()));
+      if (path.join("/") === "feedback" && method === "POST")
+        return respond(
+          await arc.feedback(identity, eventId(), uuid(body.sessionId), body),
+        );
       if (path[0] === "connections") {
         if (path.length === 1 && method === "GET")
           return respond(await connect.state(identity, eventId()));

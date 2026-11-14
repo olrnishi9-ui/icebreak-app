@@ -6,6 +6,7 @@ import {
   type ConnectionState,
   type Connection,
 } from "../../lib/connections";
+import { Conversation, PrepCard } from "./conversation";
 import { ErrorMessage } from "./shared";
 export function ConnectionFlow({
   eventId,
@@ -44,6 +45,12 @@ export function ConnectionFlow({
     (
       s: ConnectionState & { notice?: { id: string; message: string } | null },
     ) => {
+      if (
+        s.session &&
+        localStorage.getItem(`icebreak-finished-${s.session.id}`) === "yes" &&
+        s.session.arc.own.done
+      )
+        s = { ...s, session: null };
       setState(s);
       if (
         s.notice &&
@@ -177,7 +184,17 @@ export function ConnectionFlow({
           </button>
         </p>
       )}
-      {session ? (
+      {session && session.state !== "meeting" ? (
+        <Conversation
+          key={session.id}
+          eventId={eventId}
+          session={session}
+          onFinish={() => {
+            localStorage.setItem(`icebreak-finished-${session.id}`, "yes");
+            setState({ ...state, session: null });
+          }}
+        />
+      ) : session ? (
         <>
           <p className="eyebrow">
             {session.state === "started"
@@ -211,7 +228,9 @@ export function ConnectionFlow({
                   </figcaption>
                 </figure>
               )}
-              <div data-prep-card-slot="" />
+              <div data-prep-card-slot="">
+                <PrepCard session={session} />
+              </div>
               <p role="status">
                 {session.arrived
                   ? "You’re here. Waiting for your partner."

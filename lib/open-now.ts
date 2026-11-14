@@ -17,6 +17,7 @@ export type Candidate = {
   openUntil: string | null;
   openedAt: string | null;
   answers: Answer[];
+  met?: boolean;
 };
 export type OpenEntry = {
   participantId?: string;
@@ -63,6 +64,7 @@ export function openNow(
       if (first && choice != null) entry.chip = first.options[choice];
       return {
         entry,
+        met: Number(p.met ?? false),
         goal: Number(p.goal === caller.goal),
         shared: shared.length,
         opened: Date.parse(p.openedAt || "") || 0,
@@ -71,6 +73,7 @@ export function openNow(
     })
     .sort(
       (a, b) =>
+        a.met - b.met ||
         b.goal - a.goal ||
         b.shared - a.shared ||
         b.opened - a.opened ||
