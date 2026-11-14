@@ -4,6 +4,7 @@ import { api } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import type { Answer, OpenEntry } from "../../../lib/open-now";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
+import { ConnectionFlow } from "../../components/connection-flow";
 import { ProfileEditor } from "../../components/profile-editor";
 export default function EventHome({
   params,
@@ -11,6 +12,9 @@ export default function EventHome({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const [flow, setFlow] = useState(false);
+  const [connectionOffline, setConnectionOffline] = useState(false);
+  const [selection, setSelection] = useState<OpenEntry | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(false),
@@ -118,7 +122,7 @@ export default function EventHome({
         {profile && (
           <button
             className="link-button"
-            disabled={busy || offline}
+            disabled={busy || offline || connectionOffline || flow}
             onClick={() =>
               void action(async () => {
                 await api(`/api/events/${id}/membership`, "DELETE");
@@ -191,7 +195,7 @@ export default function EventHome({
                               answer?.choice === i && !answer.skipped
                             }
                             key={option}
-                            disabled={busy || offline}
+                            disabled={busy || offline || connectionOffline}
                             onClick={() => void saveAnswer(q.id, i)}
                           >
                             {option}
@@ -201,7 +205,7 @@ export default function EventHome({
                           type="button"
                           className="option skip"
                           aria-pressed={answer?.skipped === true}
-                          disabled={busy || offline}
+                          disabled={busy || offline || connectionOffline}
                           onClick={() => void saveAnswer(q.id, null)}
                         >
                           Skip
@@ -212,14 +216,14 @@ export default function EventHome({
                 })}
                 <div className="actions">
                   <button
-                    disabled={busy || offline}
+                    disabled={busy || offline || connectionOffline}
                     onClick={() => void finish(false)}
                   >
                     I’m in
                   </button>
                   <button
                     className="secondary"
-                    disabled={busy || offline}
+                    disabled={busy || offline || connectionOffline}
                     onClick={() => void finish(true)}
                   >
                     Skip all and continue
@@ -228,147 +232,214 @@ export default function EventHome({
               </section>
             ) : (
               <>
-                <section className="availability panel">
-                  <div>
-                    <h2>Your invitation to chat</h2>
-                    <p>
-                      {open
-                        ? `Open until ${new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${Math.ceil((until - clock) / 60000)} min left`
-                        : "You’re keeping to yourself for now."}
-                    </p>
-                    <p className="quiet">
-                      Opening shows your name and goal in this event for 15
-                      minutes.
-                    </p>
-                  </div>
-                  <div>
-                    <button
-                      role="switch"
-                      aria-checked={open}
-                      disabled={busy || offline}
-                      onClick={() =>
-                        void action(async () => {
-                          const v = await api<{ openUntil: string | null }>(
-                            `/api/events/${id}/availability`,
-                            "PUT",
-                            { open: !open },
-                          );
-                          setProfile({ ...profile, openUntil: v.openUntil });
-                        })
-                      }
-                    >
-                      {open ? "Open to chat · turn off" : "I’m open to chat"}
-                    </button>
-                    {open && (
-                      <button
-                        className="link-button"
-                        disabled={busy || offline}
-                        onClick={() =>
-                          void action(async () => {
-                            const v = await api<{ openUntil: string | null }>(
-                              `/api/events/${id}/availability`,
-                              "PUT",
-                              { open: true },
-                            );
-                            setProfile({ ...profile, openUntil: v.openUntil });
-                          })
-                        }
-                      >
-                        Stay open for 15 more minutes
-                      </button>
-                    )}
-                  </div>
-                </section>
-                <section>
-                  <div className="section-title">
-                    <h2>Open to chat</h2>
-                    <button
-                      className="link-button"
-                      disabled={busy || offline}
-                      onClick={() => setQuestions(true)}
-                    >
-                      Edit your answers
-                    </button>
-                  </div>
-                  <p className="quiet">
-                    The list order is not a ranking. Start with a hello, and
-                    check that now is a good time.
-                  </p>
-                  {list === null ? (
-                    <Loading label="Seeing who’s open…" />
-                  ) : list.length === 0 ? (
-                    <div className="empty panel">
-                      <span className="hello-mark" aria-hidden="true">
-                        hello.
-                      </span>
-                      <h2>Nobody’s open right now — you can be the first</h2>
-                      <p>
-                        You can open to chat above, or say hello to someone
-                        nearby.
+                <ConnectionFlow
+                  eventId={id}
+                  onFlow={setFlow}
+                  parentOffline={offline}
+                  onOffline={setConnectionOffline}
+                  selection={selection}
+                  clearSelection={() => setSelection(null)}
+                />
+                {!flow && (
+                  <>
+                    <section className="availability panel">
+                      <div>
+                        <h2>Your invitation to chat</h2>
+                        <p>
+                          {open
+                            ? `Open until ${new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${Math.ceil((until - clock) / 60000)} min left`
+                            : "You’re keeping to yourself for now."}
+                        </p>
+                        <p className="quiet">
+                          Opening shows your name and goal in this event for 15
+                          minutes.
+                        </p>
+                      </div>
+                      <div>
+                        <button
+                          role="switch"
+                          aria-checked={open}
+                          disabled={busy || offline || connectionOffline}
+                          onClick={() =>
+                            void action(async () => {
+                              const v = await api<{ openUntil: string | null }>(
+                                `/api/events/${id}/availability`,
+                                "PUT",
+                                { open: !open },
+                              );
+                              setProfile({
+                                ...profile,
+                                openUntil: v.openUntil,
+                              });
+                            })
+                          }
+                        >
+                          {open
+                            ? "Open to chat · turn off"
+                            : "I’m open to chat"}
+                        </button>
+                        {open && (
+                          <button
+                            className="link-button"
+                            disabled={busy || offline || connectionOffline}
+                            onClick={() =>
+                              void action(async () => {
+                                const v = await api<{
+                                  openUntil: string | null;
+                                }>(`/api/events/${id}/availability`, "PUT", {
+                                  open: true,
+                                });
+                                setProfile({
+                                  ...profile,
+                                  openUntil: v.openUntil,
+                                });
+                              })
+                            }
+                          >
+                            Stay open for 15 more minutes
+                          </button>
+                        )}
+                      </div>
+                    </section>
+                    <section>
+                      <div className="section-title">
+                        <h2>Open to chat</h2>
+                        <button
+                          className="link-button"
+                          disabled={busy || offline || connectionOffline}
+                          onClick={() => setQuestions(true)}
+                        >
+                          Edit your answers
+                        </button>
+                      </div>
+                      <p className="quiet">
+                        The list order is not a ranking. Start with a hello, and
+                        check that now is a good time.
                       </p>
-                      <label>
-                        Event code
-                        <input readOnly value={profile.event.code} />
-                      </label>
-                      <a
-                        href={`/join/${profile.event.code}`}
-                        className="text-link"
-                      >
-                        Share this event invitation →
-                      </a>
-                    </div>
-                  ) : (
-                    <ul className="people">
-                      {list.map((p, i) => (
-                        <li className="person" key={i}>
-                          <h3>{p.displayName}</h3>
-                          <p>{p.goalLine}</p>
-                          {p.chip && <span className="chip">{p.chip}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                      {list === null ? (
+                        <Loading label="Seeing who’s open…" />
+                      ) : list.length === 0 ? (
+                        <div className="empty panel">
+                          <span className="hello-mark" aria-hidden="true">
+                            hello.
+                          </span>
+                          <h2>
+                            Nobody’s open right now — you can be the first
+                          </h2>
+                          <p>
+                            You can open to chat above, or say hello to someone
+                            nearby.
+                          </p>
+                          <label>
+                            Event code
+                            <input readOnly value={profile.event.code} />
+                          </label>
+                          <a
+                            href={`/join/${profile.event.code}`}
+                            className="text-link"
+                          >
+                            Share this event invitation →
+                          </a>
+                        </div>
+                      ) : (
+                        <ul className="people">
+                          {list.map((p, i) => (
+                            <li className="person" key={i}>
+                              <h3>{p.displayName}</h3>
+                              <p>{p.goalLine}</p>
+                              {p.chip && <span className="chip">{p.chip}</span>}
+                              <div className="actions">
+                                <button
+                                  disabled={
+                                    busy || offline || connectionOffline
+                                  }
+                                  onClick={() => setSelection(p)}
+                                >
+                                  Invite to chat
+                                </button>
+                                <button
+                                  className="link-button"
+                                  disabled={
+                                    busy || offline || connectionOffline
+                                  }
+                                  onClick={() =>
+                                    void action(async () => {
+                                      await api("/api/blocks", "POST", {
+                                        eventId: id,
+                                        participant: p.participantId,
+                                      });
+                                    })
+                                  }
+                                >
+                                  Block
+                                </button>
+                                <button
+                                  className="link-button"
+                                  disabled={
+                                    busy || offline || connectionOffline
+                                  }
+                                  onClick={() =>
+                                    void action(async () => {
+                                      await api("/api/reports", "POST", {
+                                        eventId: id,
+                                        participant: p.participantId,
+                                      });
+                                      setError("Report received.");
+                                    })
+                                  }
+                                >
+                                  Report
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  </>
+                )}
               </>
             )}
-            <section className="panel">
-              <div className="section-title">
-                <div>
-                  <p className="eyebrow">Make it yours · optional</p>
-                  <h2>Your profile</h2>
+            {!flow && (
+              <section className="panel">
+                <div className="section-title">
+                  <div>
+                    <p className="eyebrow">Make it yours · optional</p>
+                    <h2>Your profile</h2>
+                  </div>
+                  <button
+                    className="link-button"
+                    disabled={busy || offline || connectionOffline}
+                    aria-expanded={edit}
+                    onClick={() => setEdit(!edit)}
+                  >
+                    {edit ? "Close editor" : "Edit profile"}
+                  </button>
                 </div>
-                <button
-                  className="link-button"
-                  disabled={busy || offline}
-                  aria-expanded={edit}
-                  onClick={() => setEdit(!edit)}
-                >
-                  {edit ? "Close editor" : "Edit profile"}
-                </button>
-              </div>
-              {edit ? (
-                <ProfileEditor
-                  profile={profile}
-                  busy={busy || offline}
-                  save={async (body) => {
-                    await action(async () => {
-                      setProfile(
-                        await api<Profile>("/api/profile", "PUT", {
-                          ...body,
-                          eventId: id,
-                        }),
-                      );
-                      setEdit(false);
-                    });
-                  }}
-                />
-              ) : (
-                <p className="quiet">
-                  Add a fun fact, an interest, or something you’d like to learn.
-                  You can leave these empty forever.
-                </p>
-              )}
-            </section>
+                {edit ? (
+                  <ProfileEditor
+                    profile={profile}
+                    busy={busy || offline || connectionOffline}
+                    save={async (body) => {
+                      await action(async () => {
+                        setProfile(
+                          await api<Profile>("/api/profile", "PUT", {
+                            ...body,
+                            eventId: id,
+                          }),
+                        );
+                        setEdit(false);
+                      });
+                    }}
+                  />
+                ) : (
+                  <p className="quiet">
+                    Add a fun fact, an interest, or something you’d like to
+                    learn. You can leave these empty forever.
+                  </p>
+                )}
+              </section>
+            )}
           </>
         )}
       </main>

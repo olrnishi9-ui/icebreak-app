@@ -318,13 +318,14 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
     },
   );
   await t.test(
-    "payload ONLY name, goal line and <=1 verbatim shared chip; UI has no open count",
+    "payload ONLY routing participantId, name, goal line and <=1 verbatim shared chip; UI has no open count",
     async () => {
       const payload = (
         await call("GET", `events/${event}/open`, undefined, "2")
       ).data;
       assert.deepEqual(payload, [
         {
+          participantId: A,
           displayName: "Alex",
           goalLine: qs[5].options[0],
           chip: qs[0].options[0],
@@ -333,7 +334,7 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
       for (const item of payload) {
         assert.ok(
           Object.keys(item).every((k) =>
-            ["displayName", "goalLine", "chip"].includes(k),
+            ["participantId", "displayName", "goalLine", "chip"].includes(k),
           ),
         );
         assert.ok(

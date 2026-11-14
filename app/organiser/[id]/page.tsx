@@ -1,5 +1,6 @@
 "use client";
 import { use, useEffect, useState } from "react";
+import { MeetingPointEditor } from "../../components/meeting-point-editor";
 import QRCode from "qrcode";
 import { api } from "../../../lib/supabase";
 import type { EventInvite } from "../../../lib/types";
@@ -74,6 +75,12 @@ export default function Invitation({
             </>
           )}
         </section>
+        {invite && (
+          <MeetingPointEditor
+            eventId={id}
+            initial={invite.meetingPoints ?? []}
+          />
+        )}
       </main>
     </>
   );

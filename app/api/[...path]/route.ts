@@ -8,4 +8,10 @@ async function route(
 ) {
   return run(request, (await context.params).path);
 }
-export { route as GET, route as POST, route as PUT, route as DELETE };
+export {
+  route as GET,
+  route as POST,
+  route as PUT,
+  route as DELETE,
+  route as PATCH,
+};

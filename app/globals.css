@@ -358,3 +358,12 @@ legend {
     align-items: flex-start;
   }
 }
+
+/* The meeting photo is the wayfinding anchor; all actions stay in plain words. */
+.connect-panel { margin-bottom: 1.5rem; }
+.incoming-request { padding-block: 1rem; border-bottom: 1px solid var(--line, #d6dcd7); }
+.meeting-point { margin: 1.5rem 0; }
+.meeting-point img { width: 100%; max-height: 320px; object-fit: cover; border-radius: 16px; }
+.meeting-point figcaption { padding-block: .8rem; }
+.short-code { font-family: monospace; letter-spacing: .12em; font-size: 1.4rem; white-space: nowrap; }
+.request-choice { border-left: 3px solid currentColor; padding-left: 1rem; margin-bottom: 2rem; }

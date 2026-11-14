@@ -1,3 +1,4 @@
+import { ConnectionService } from "./connection-service";
 import { createClient } from "@supabase/supabase-js";
 import { EntryService, HttpError, code, uuid } from "./service";
 import type { DB } from "./service";
@@ -12,12 +13,16 @@ export async function verify(token: string) {
   const { data, error } = await c.auth.getUser(token);
   return error ? null : (data.user?.id ?? null);
 }
-export function handler(db: DB, verifyIdentity: Verify = verify) {
+export function handler(
+  db: DB,
+  verifyIdentity: Verify = verify,
+  now: () => number = Date.now,
+) {
   return async (request: Request, path: string[]) => {
     const respond = (v: unknown, status = 200) =>
       Response.json(v, { status, headers: { "Cache-Control": "no-store" } });
     try {
-      const s = new EntryService(db),
+      const s = new EntryService(db, now),
         url = new URL(request.url),
         method = request.method;
       if (method === "GET" && path[0] === "events" && path.length === 2)
@@ -42,7 +47,7 @@ export function handler(db: DB, verifyIdentity: Verify = verify) {
           "Your guest session is missing or expired. Reopen the event link to try again.",
         );
       let body: Record<string, unknown> = {};
-      if (["POST", "PUT"].includes(method)) {
+      if (["POST", "PUT", "PATCH"].includes(method)) {
         const raw = await request.text();
         if (raw.length > 20000)
           throw new HttpError(413, "This form is too large.");
@@ -60,6 +65,43 @@ export function handler(db: DB, verifyIdentity: Verify = verify) {
         return respond(await s.join(identity, body));
       const eventId = () =>
         uuid(url.searchParams.get("eventId") ?? body.eventId);
+      const connect = new ConnectionService(db, now);
+      if (path[0] === "connections") {
+        if (path.length === 1 && method === "GET")
+          return respond(await connect.state(identity, eventId()));
+        if (path.length === 1 && method === "POST")
+          return respond(await connect.send(identity, eventId(), body));
+        if (path.length === 2 && path[1] === "code" && method === "POST")
+          return respond(await connect.send(identity, eventId(), body, true));
+        if (path.length === 2 && method === "PATCH")
+          return respond(
+            await connect.respond(identity, eventId(), path[1], body.action),
+          );
+      }
+      if (path[0] === "sessions" && path.length === 3 && method === "POST")
+        return respond(
+          await connect.sessionAction(identity, eventId(), path[1], path[2]),
+        );
+      if (
+        ["blocks", "reports"].includes(path[0]) &&
+        path.length === 1 &&
+        method === "POST"
+      )
+        return respond(
+          await connect.safety(
+            identity,
+            eventId(),
+            body,
+            path[0] === "reports",
+          ),
+        );
+      if (
+        path[0] === "events" &&
+        path[2] === "meeting-points" &&
+        path.length === 3 &&
+        method === "PUT"
+      )
+        return respond(await connect.configure(identity, uuid(path[1]), body));
       if (path.join("/") === "profile") {
         if (method === "GET")
           return respond(await s.profile(identity, eventId()));

@@ -1,8 +1,8 @@
 # Icebreak
 
 Event invitations and guest entry, optional profiles and questions, and a voluntary
-“Open to chat” board. Task 2 stops here: connection requests and conversation cards
-are not implemented.
+“Open to chat” board, consent-based connection requests, meeting points and arrival.
+Task 3 ends when the conversation session starts; conversation cards are Task 4.
 
 ## Run locally
 
@@ -28,6 +28,8 @@ Leave event deletes that caller's membership, answers and optional topics.
 The browser uses `@supabase/supabase-js` for anonymous sign-in, automatic refresh,
 and persisted SDK sessions. Our code never issues or stores session tokens.
 `localStorage` additionally holds only the last **event ID** for a return link.
+`sessionStorage` remembers which neutral pre-start cancellation notice this tab has
+seen; it contains no recipient decisions or credentials.
 The join screen validates the invitation before calling `signInAnonymously()`;
 then sends the SDK access token to the join API. The API verifies every bearer
 with Supabase `auth.getUser(token)` and binds `users.auth_id` to that verified
@@ -57,8 +59,8 @@ backend role with the existing privileges to write and to read candidates for
 projection (Supabase's server Postgres connection). Every private operation first
 resolves event membership from the verified Auth identity. The single server
 projection for the board reads event-local candidates, orders them, and returns
-only name, goal and at most one verbatim shared option. IDs, raw answers, optional
-fuel, sort keys, credentials and internal metrics never leave that operation.
+a routing participant ID, name, goal and at most one verbatim shared option. Raw
+answers, optional fuel, sort keys, credentials and internal metrics never leave it.
 No service-role API key is needed. Do not expose `DATABASE_URL` / `DIRECT_URL`.
 No realtime subscriptions, background jobs or client mutation grants are added.
 
@@ -100,9 +102,9 @@ session, 404 absent event/membership/organiser access, 410 inactive/ended event,
 | `PUT /api/profile` | `{eventId,displayName,goal,field?,funFact?,fieldVisible?,funFactVisible?,topics?}` | Own updated `Profile`; replacement semantics for optional fields (omitted = empty/false) |
 | `POST /api/questionnaire` | `{eventId,answers:[{questionId,choice,skipped}],complete?}` | Own updated `Profile`; `complete` defaults true and requires all six items; false autosaves a subset without completing setup |
 | `PUT /api/events/:id/availability` | `{open:boolean}` | `{openUntil:ISO timestamp or null}` |
-| `GET /api/events/:id/open` | Event membership required | Array of **only** `{displayName,goalLine,chip?}`; never a wrapper with metrics or IDs |
+| `GET /api/events/:id/open` | Event membership required | Array of **only** `{participantId,displayName,goalLine,chip?}`; never a wrapper with metrics |
 | `DELETE /api/events/:id/membership` | Own membership | `{left:true}`; cascades answers and fuel, clears availability with membership deletion |
-| `GET /api/events/:id/organiser` | Event creator's verified identity only | `{event:{id,name,status},joinCode,joinUrl}` for refreshing the invitation page |
+| `GET /api/events/:id/organiser` | Event creator's verified identity only | `{event:{id,name,status},joinCode,joinUrl,meetingPoints}` for refreshing the invitation page |
 
 `Question = {id,prompt,kind,options,position}`; five binary preferences and one
 multi-option goal. Answer `choice` is a zero-based option index; an explicit skip
@@ -120,8 +122,8 @@ optional fields and no topics are always valid. Display name and goal are requir
 The two availability routes are additions to the engineering prompt's API list.
 The public question-bank, membership deletion and organiser-invitation GET are
 small adaptations supporting S1, one-tap leave and refresh respectively.
-`/api/recommendations`, `/api/connections`, `/api/icebreaker`, and `/api/feedback`
-are **not implemented**. No Task 3/4 interaction UI or API is included.
+`/api/recommendations`, `/api/icebreaker`, and `/api/feedback` are **not implemented**.
+Task 3 additions are documented below.
 
 ## Verification
 
@@ -160,3 +162,130 @@ permitted small `qrcode` encoder. Development additions: its types, `jsqr` for
 independent decoding, `playwright-core` for browser checks (uses installed Chromium).
 No other runtime dependencies. See [Task 2 validation](docs/Task2-Validation.md)
 for executed results, failures and outstanding hosted checks.
+
+## Task 3 — connections API and state
+
+Auth for **every** route below is `Authorization: Bearer <Supabase SDK access token>`.
+The API verifies it using `auth.getUser`, then uses the existing `users.auth_id` →
+`event_participants(event_id,user_id)` mapping from Tasks 1–2. The brief's custom
+session-token/header/hash wording is superseded: no custom token scheme is used.
+For GET supply `?eventId=<uuid>`; for mutations supply `eventId` in the JSON body
+except the organiser route, where the event ID is in the path. Codes and auth
+credentials are never URL parameters. All private responses use `Cache-Control: no-store`.
+
+| Method / path | JSON body beyond eventId | Success |
+| --- | --- | --- |
+| POST `/api/connections` | `participant`: target ID from board, `duration`: exactly 5 or 10 | Connection state below |
+| GET `/api/connections` | — | Connection state; poll every 3 seconds |
+| PATCH `/api/connections/:id` | `action`: `accept`, `later` (recipient), or `cancel` (sender) | Connection state |
+| POST `/api/connections/code` | `code`: 8-character short code, optional `duration`: 5 or 10 (default 5) | Connection state; owner sees Start / Later |
+| POST `/api/sessions/:id/arrive` | — | Connection state; idempotent, both arrivals set startedAt |
+| POST `/api/sessions/:id/start` | — | Connection state; caller must have arrived |
+| POST `/api/sessions/:id/late` | — | Connection state; partner sees “on their way”; no text input |
+| POST `/api/sessions/:id/cancel` | — | Connection state; pre-start only, restores both to open for 15 minutes |
+| POST `/api/blocks` | `participant`: target ID, or `requestId`: own request ID | `{ "ok": true }`; symmetric enforcement for event lifetime |
+| POST `/api/reports` | `participant`: target ID, or `requestId`: own request ID; optional `category`: nonempty string ≤80 characters | `{ "ok": true }`; report is private, no state change |
+| PUT `/api/events/:id/meeting-points` | `meetingPoints`: 1–20 objects `{label, photoUrl, direction}` in configured order | `{ "ok": true }`; organiser only |
+
+`GET /api/connections`, code, session arrive/start/cancel, blocks and reports are
+additions beyond the engineering prompt's API list. The late endpoint and organiser
+meeting-point configuration are further adaptations supporting the brief. The
+organiser invitation GET also returns `meetingPoints: [{id,label,photoUrl,direction}]`.
+Task 1 had no configured meeting points, so the organiser configures real venue
+landmarks in `/organiser/:id`. Board accept returns neutral unavailability until a
+point exists; no venue location or photo is invented. Photo URLs must be HTTPS,
+label ≤80 characters, direction ≤240. Configuration is locked while sessions are live, so editing cannot reset live
+occupancy. Snapshots remain on past sessions. Seed data is unchanged.
+
+The open-board GET now includes an opaque `participantId` routing field in addition
+to name, goal line and optional chip; names are not unique. It conveys no score or
+private profile data. Block/report are one-tap actions beside an attendee and in an incoming request.
+The request-ID alternative is an adaptation that resolves the other party on the
+server, keeping participant IDs out of connection payloads. Blocking privately
+dismisses the blocker’s inbox entries with Later’s unchanged-expiry rule. Their
+presence and board visibility never depend on a block or a private Later decision.
+
+Connection state (fixed projections, never raw Prisma/SQL rows):
+
+```ts
+{
+  shortCode: string; // caller's own, shown on S3 only
+  incoming: Connection[];
+  outgoing: Connection[]; // pending or accepted live request; no expired history
+  session: null | {
+    id: string;
+    partner: {displayName: string; goalLine: string};
+    duration: 5 | 10;
+    sharedReason: string;
+    meetingPoint: null | {id: string; label: string; photoUrl: string; direction: string};
+    state: 'meeting' | 'started';
+    startedAt: string | null;
+    arrived: boolean;
+    partnerArrived: boolean;
+    partnerOnTheirWay: boolean;
+  };
+  notice: null | {id: string; message: "Plans changed. You’re open to chat again."};
+}
+// Connection = {id, displayName, goalLine, sharedReason, duration, kind,
+//               status, expiresAt}; kind = 'board' | 'code'; ISO timestamps.
+```
+
+Routing request/session IDs and request kind are the only additions to the brief's
+content allowlist. Outgoing status is computed as accepted, otherwise pending
+before original expiry, otherwise expired. At expiry the state endpoint omits it,
+so S4 silently returns to S3, without a history entry or outcome banner. A private
+Later removes only the recipient's inbox entry; it cannot shorten expiry, free the
+incoming-cap slot, change board visibility, release pair cooldown or change sender
+retry/cancel behavior. Code prompts follow precisely the same rule and TTL.
+The server stores a single grounded reason at send time (verbatim shared option,
+otherwise `You're both here to <goal>` or `<sender goal> · <recipient goal>`).
+No free-text request/message field exists. Mutual opposite board requests accept
+the original request and its duration; no duplicate row is created.
+
+A code connect permits a closed-board target (the pair is already together), but
+still checks active event, membership, block, active session/mute, pending cap,
+rate and cooldown. It requires the code owner's Start tap. That creates a started
+session with `meetingPoint: null`, meaning already together; no arrival step.
+Neither GPS nor any proximity signal is collected. A board session stores the
+least-busy point with configured-order ties once, in an event-locked transaction;
+both payloads return that exact snapshot. Arrival/start stop at `started`.
+Running late is a boolean hold for the active pre-start session. The point remains
+held until pre-start cancel or Task 4 closes the session. There is no timer/cron.
+A live session mutes incoming prompts and prevents re-opening availability or
+leaving the event; pre-start users can cancel first. Task 4 owns started-session exit.
+
+Constants in `lib/connection-policy.ts`: TTL 15 minutes, pending incoming cap 3,
+re-request cooldown 30 minutes **after original expiry**, rolling send cap 20 per
+participant per event per hour. Private Later entries still consume cap until
+expiry. All unavailability causes use exactly HTTP 409
+`{"error":"Not available right now."}`. Wrong/cross-event codes give HTTP 404
+`{"error":"Code not found. Check it and try again."}` and create no row. Invalid
+inputs give 400; unauthenticated 401; nonmembership/wrong-party IDs 404; ended event
+410. A cancelled request is withdrawn from both views and retains pair cooldown.
+
+The additive migration revokes browser reads of raw requests and private decisions.
+Authenticated DB clients may call `own_connections(event_uuid)` for their safe
+projection, which computes expiry using database time and respects event activity.
+Sessions use forced RLS for only their two participants; blocks/reports have no
+participant SELECT or mutation grants. The server connection remains trusted as
+in Task 2. An event row lock serializes all connection/availability/leave mutations
+and point assignment; a DB trigger separately forbids overlapping pending rows for
+an unordered pair, in either direction.
+
+Additional verification:
+
+```sh
+# After building/starting with the public fixture configuration above:
+npm run test:connections:browser
+```
+
+`tests/connections.test.mjs` exercises HTTP handlers plus real PostgreSQL SQL/RLS in
+PGlite, including matched-clock board/code indistinguishability, concurrency and
+arrival. `tests/connections.browser.mjs` renders the production UI in two independent
+Chromium contexts and routes API calls through those same real handlers and PGlite.
+Only identity verification and persisted SDK credentials are fixtures; connection
+responses come from the database. It compares actual S4/S3 content for Later,
+unseen and opened/no-action at before/at/after expiry, checks refresh restoration,
+photo/direction equality, arrival, request retry, offline recovery and cancellation.
+These are **not** hosted Supabase Auth or two-real-phone tests. Executed results
+and environment limitations are recorded in `docs/Task3-Validation.md`.

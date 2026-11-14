@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-test("additive migration preserves already-seeded Task 1 data and backfills event names/goals", async (t) => {
+test("additive Task 2/3 migrations preserve existing seed, answers, names/goals and add short codes", async (t) => {
   const pg = new PGlite();
   t.after(() => pg.close());
   await pg.exec(
@@ -65,6 +65,45 @@ test("additive migration preserves already-seeded Task 1 data and backfills even
   assert.ok(
     participants.every(
       (p) => !p.field_visible && !p.fun_fact_visible && !p.available_until,
+    ),
+  );
+  await pg.exec(seed);
+  assert.equal(
+    (await pg.query("SELECT * FROM event_participants")).rows.length,
+    6,
+  );
+  const previous = (
+    await pg.query("SELECT * FROM answers ORDER BY user_id,question_id")
+  ).rows;
+  const members = (
+    await pg.query(
+      "SELECT event_id,user_id,display_name,goal FROM event_participants ORDER BY user_id",
+    )
+  ).rows;
+  await pg.exec(
+    await readFile(
+      new URL(
+        "../prisma/migrations/202611140003_connections/migration.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(
+    (await pg.query("SELECT * FROM answers ORDER BY user_id,question_id")).rows,
+    previous,
+  );
+  assert.deepEqual(
+    (
+      await pg.query(
+        "SELECT event_id,user_id,display_name,goal FROM event_participants ORDER BY user_id",
+      )
+    ).rows,
+    members,
+  );
+  assert.ok(
+    (await pg.query("SELECT short_code FROM event_participants")).rows.every(
+      (p) => /^[A-F0-9]{8}$/.test(p.short_code),
     ),
   );
   await pg.exec(seed);

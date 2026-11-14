@@ -16,6 +16,7 @@ export type Profile = {
 };
 export type EventInvite = {
   event: { id: string; name: string; status: string };
+  meetingPoints?: import("./connections").MeetingPoint[];
   joinCode: string;
   joinUrl: string;
 };

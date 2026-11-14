@@ -211,6 +211,10 @@ export class EntryService {
       event: { id: e.id, name: e.name, status: e.status },
       joinCode: e.event_code,
       joinUrl: `${origin}/join/${e.event_code}`,
+      meetingPoints: await this.db.query(
+        'SELECT id,label,photo_url AS "photoUrl",direction FROM meeting_points WHERE event_id=$1 ORDER BY position',
+        [eventId],
+      ),
     };
   }
   async join(authId: string, body: Record<string, unknown>) {
@@ -374,16 +378,24 @@ export class EntryService {
     this.active(await this.event(eventId));
     const now = this.now(),
       until = open ? new Date(now + 15 * 60 * 1000).toISOString() : null;
-    await this.db.query(
-      `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4,opened_at=$5 WHERE event_id=$1 AND user_id=$2`,
-      [
-        eventId,
-        p.user_id,
-        open ? "open" : "unavailable",
-        until,
-        open ? new Date(now).toISOString() : null,
-      ],
-    );
+    await this.db.transaction(async (db) => {
+      await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [eventId]);
+      const active = await db.query(
+        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND $2 IN(user_a_id,user_b_id)",
+        [eventId, p.user_id],
+      );
+      if (active.length) throw new HttpError(409, "Not available right now.");
+      await db.query(
+        `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4,opened_at=$5 WHERE event_id=$1 AND user_id=$2`,
+        [
+          eventId,
+          p.user_id,
+          open ? "open" : "unavailable",
+          until,
+          open ? new Date(now).toISOString() : null,
+        ],
+      );
+    });
     return { openUntil: until };
   }
   async open(authId: string, eventId: string) {
@@ -391,7 +403,7 @@ export class EntryService {
     this.active(await this.event(eventId));
     // Only this trusted server operation reads other participants. Never return raw rows.
     const rows = await this.db.query<Candidate>(
-      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1 AND (p.user_id=$2 OR (p.availability_status='open' AND p.available_until>$3))`,
+      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1 AND (p.user_id=$2 OR (p.availability_status='open' AND p.available_until>$3 AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.event_id=p.event_id AND s.closed_at IS NULL AND p.user_id IN(s.user_a_id,s.user_b_id))))`,
       [eventId, p.user_id, new Date(this.now()).toISOString()],
     );
     for (const row of rows) {
@@ -409,14 +421,23 @@ export class EntryService {
       await this.questions(eventId),
       this.now(),
       (id) => ties.get(id)!,
+      true,
     );
   }
   async leave(authId: string, eventId: string) {
-    const p = await this.member(authId, eventId);
-    await this.db.query(
-      "DELETE FROM event_participants WHERE event_id=$1 AND user_id=$2",
-      [eventId, p.user_id],
-    );
+    await this.db.transaction(async (db) => {
+      await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [eventId]);
+      const p = await this.member(authId, eventId, db);
+      const live = await db.query(
+        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND $2 IN(user_a_id,user_b_id)",
+        [eventId, p.user_id],
+      );
+      if (live.length) throw new HttpError(409, "Not available right now.");
+      await db.query(
+        "DELETE FROM event_participants WHERE event_id=$1 AND user_id=$2",
+        [eventId, p.user_id],
+      );
+    });
     return { left: true };
   }
 }
