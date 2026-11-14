@@ -1,5 +1,13 @@
 # ChatGPT Red-Team — Muse Adjudication
 
+> **STATUS: WITHDRAWN by Leo, 2026-11-14 16:28 — "we're not using this anymore."
+> None of the rulings below are adopted. Do not apply them to the build plan,
+> the Codex task briefs, or the pitch. The design stands as it was before this
+> adjudication (Master Evaluation + v2 review). This file is kept only as a
+> record of the consultation.**
+
+# Original adjudication (withdrawn)
+
 *Source: ChatGPT red-team of the improved MVP 11-step flow (organiser / shy
 attendee / judge), 2026-11-14: https://chatgpt.com/c/6af8d021-3cb8-83ea-b7f8-5db89660425f
 Rulings by Muse. Design changes marked DECISION are Leo + teammates' call —
