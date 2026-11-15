@@ -7,6 +7,10 @@ never rewrite the whole repo in one change.
 
 ## Read first (the product spec lives in this repo)
 
+- `docs/MeetMates-Spec.md` — the owner's complete product specification
+  (MeetMates). For the Task 5 redesign, `docs/Codex-Task5-Brief-v2.md`
+  governs: it reconciles the spec with the owner's latest decisions and
+  these design laws, and wins on any conflict about the redesign's scope.
 - `Master-Evaluation-MVP-Design.md` — full evaluation, MVP scope, screen specs,
   edge cases, development phases.
 - `Critical-Evaluation-v2-and-Engineering-Review.md` — the rulings that amend the
