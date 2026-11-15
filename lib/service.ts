@@ -185,7 +185,7 @@ export class EntryService {
       const userId = await this.user(authId, db);
       const eventCode = randomBytes(5).toString("hex").toUpperCase();
       const [e] = await db.query<Event>(
-        `INSERT INTO events(name,event_code,status,organizer_id,ends_at) VALUES ($1,$2,'active',$3::uuid,$4) RETURNING id,name,status,event_code,ends_at`,
+        `INSERT INTO events(name,event_code,status,organizer_id,ends_at) VALUES ($1,$2,'active',$3::uuid,$4::timestamptz) RETURNING id,name,status,event_code,ends_at`,
         [name, eventCode, userId, endsAt],
       );
       for (let i = 0; i < bank.length; i++)
@@ -386,7 +386,7 @@ export class EntryService {
       );
       if (active.length) throw new HttpError(409, "Not available right now.");
       await db.query(
-        `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4,opened_at=$5 WHERE event_id=$1::uuid AND user_id=$2::uuid`,
+        `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4::timestamptz,opened_at=$5::timestamptz WHERE event_id=$1::uuid AND user_id=$2::uuid`,
         [
           eventId,
           p.user_id,
@@ -403,7 +403,7 @@ export class EntryService {
     this.active(await this.event(eventId));
     // Only this trusted server operation reads other participants. Never return raw rows.
     const rows = await this.db.query<Candidate>(
-      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1::uuid AND (p.user_id=$2::uuid OR (p.availability_status='open' AND p.available_until>$3 AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.event_id=p.event_id AND s.closed_at IS NULL AND p.user_id IN(s.user_a_id,s.user_b_id))))`,
+      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1::uuid AND (p.user_id=$2::uuid OR (p.availability_status='open' AND p.available_until>$3::timestamptz AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.event_id=p.event_id AND s.closed_at IS NULL AND p.user_id IN(s.user_a_id,s.user_b_id))))`,
       [eventId, p.user_id, new Date(this.now()).toISOString()],
     );
     for (const row of rows) {

@@ -241,7 +241,7 @@ export class ArcService {
             ? "timer"
             : "either";
         await db.query(
-          "UPDATE sessions SET closed_at=$2,close_reason=$3,resume_position=arc_position,arc_position=jsonb_array_length(arc_script->'cards')-1,arc_skipped='{}' WHERE id=$1::uuid AND closed_at IS NULL",
+          "UPDATE sessions SET closed_at=$2::timestamptz,close_reason=$3,resume_position=arc_position,arc_position=jsonb_array_length(arc_script->'cards')-1,arc_skipped='{}' WHERE id=$1::uuid AND closed_at IS NULL",
           [id, new Date(this.now()).toISOString(), reason],
         );
         await db.query(
@@ -249,7 +249,7 @@ export class ArcService {
           [event, s.user_a_id, s.user_b_id],
         );
         await db.query(
-          "INSERT INTO interactions(id,event_id,user_a_id,user_b_id,started_at,ended_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6) ON CONFLICT(id) DO UPDATE SET ended_at=excluded.ended_at",
+          "INSERT INTO interactions(id,event_id,user_a_id,user_b_id,started_at,ended_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::timestamptz,$6::timestamptz) ON CONFLICT(id) DO UPDATE SET ended_at=excluded.ended_at",
           [
             id,
             event,
