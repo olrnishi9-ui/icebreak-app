@@ -40,10 +40,14 @@ websockets unless a task brief says otherwise. Keep dependencies minimal.
    switched off. The LLM never decides visibility, consent, or conversation flow —
    the four-card arc structure (prep → expand → deepen → close, alternating starter,
    listener card) is deterministic.
-5. **Progressive registration.** Joining requires display name + event goal only
-   (target <30 seconds). All other profile fields (interests, fun fact, help/learn
-   topics, ask-me-about) are optional and addable later. Users are anonymous/guest
-   rows — no passwords in the MVP.
+5. **Accounts by email code; progressive profile.** Attendees have real accounts
+   via Supabase Auth email one-time code — no passwords anywhere, and no
+   password-reset flow may be built. Registration happens BEFORE the event:
+   event code → email + code → profile form (display name + intention are the
+   required core; interests, fun fact, help/learn topics, ask-me-about,
+   origin and age bracket are optional and addable later). The personal QR is
+   generated automatically when the profile is saved. (Amended 2026-11-14 by
+   the owner: this replaces the original anonymous-guest rule.)
 6. **Event-scoped, expiring data.** Every query is scoped by event + the caller's
    session token. A participant can never read another participant's private
    answers, contact details, internal scores, or feedback — enforce with RLS and
