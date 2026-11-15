@@ -224,11 +224,11 @@ export class ConnectionService {
       )
         return neutral();
       const incoming = await db.query(
-        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND recipient_id=$2::uuid AND status='pending' AND NOT withdrawn AND expires_at>$3",
+        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND recipient_id=$2::uuid AND status='pending' AND NOT withdrawn AND expires_at>$3::timestamptz",
         [event, target.user_id, this.time()],
       );
       const recent = await db.query(
-        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND created_at>$3",
+        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND created_at>$3::timestamptz",
         [event, p.user_id, new Date(this.now() - 3600000).toISOString()],
       );
       if (
@@ -246,7 +246,7 @@ export class ConnectionService {
           ? `You're both here to ${p.goal}`
           : `${p.goal} · ${target.goal}`);
       await db.query(
-        `INSERT INTO connection_requests(event_id,sender_id,recipient_id,duration,shared_reason,kind,created_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8)`,
+        `INSERT INTO connection_requests(event_id,sender_id,recipient_id,duration,shared_reason,kind,created_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7::timestamptz,$8::timestamptz)`,
         [
           ...pair,
           duration,
@@ -284,7 +284,7 @@ export class ConnectionService {
     }
     const script = await snapshotArc(db, event, r.sender_id, r.recipient_id);
     await db.query(
-      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at,arc_script) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7::jsonb,$8,$9,$10::jsonb)`,
+      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at,arc_script) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7::jsonb,$8::timestamptz,$9::timestamptz,$10::jsonb)`,
       [
         event,
         r.id,
@@ -375,11 +375,11 @@ export class ConnectionService {
       const a = s.user_a_id === p.user_id;
       if (action === "cancel") {
         await db.query(
-          "UPDATE sessions SET closed_at=$3 WHERE event_id=$1::uuid AND id=$2::uuid",
+          "UPDATE sessions SET closed_at=$3::timestamptz WHERE event_id=$1::uuid AND id=$2::uuid",
           [event, id, this.time()],
         );
         await db.query(
-          `UPDATE event_participants SET availability_status='open',available_until=$4,opened_at=$5 WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)`,
+          `UPDATE event_participants SET availability_status='open',available_until=$4::timestamptz,opened_at=$5::timestamptz WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)`,
           [
             event,
             s.user_a_id,
@@ -392,7 +392,7 @@ export class ConnectionService {
         if (!(a ? s.arrived_a : s.arrived_b))
           return fail("Tap I’m here before starting.");
         await db.query(
-          "UPDATE sessions SET started_at=COALESCE(started_at,$3) WHERE event_id=$1::uuid AND id=$2::uuid",
+          "UPDATE sessions SET started_at=COALESCE(started_at,$3::timestamptz) WHERE event_id=$1::uuid AND id=$2::uuid",
           [event, id, this.time()],
         );
       } else if (action === "late") {
@@ -402,7 +402,7 @@ export class ConnectionService {
         );
       } else {
         await db.query(
-          `UPDATE sessions SET ${a ? "arrived_a" : "arrived_b"}=true,${a ? "late_a" : "late_b"}=false,started_at=CASE WHEN ${a ? "arrived_b" : "arrived_a"} THEN COALESCE(started_at,$3) ELSE started_at END WHERE event_id=$1::uuid AND id=$2::uuid`,
+          `UPDATE sessions SET ${a ? "arrived_a" : "arrived_b"}=true,${a ? "late_a" : "late_b"}=false,started_at=CASE WHEN ${a ? "arrived_b" : "arrived_a"} THEN COALESCE(started_at,$3::timestamptz) ELSE started_at END WHERE event_id=$1::uuid AND id=$2::uuid`,
           [event, id, this.time()],
         );
       }
@@ -452,7 +452,7 @@ export class ConnectionService {
         );
         // Dismiss only the blocker's own inbox, with exactly Later's privacy rule.
         await db.query(
-          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) SELECT id,recipient_id,'declined' FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND recipient_id=$3::uuid AND status='pending' AND NOT withdrawn AND expires_at>$4 ON CONFLICT(request_id) DO NOTHING`,
+          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) SELECT id,recipient_id,'declined' FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND recipient_id=$3::uuid AND status='pending' AND NOT withdrawn AND expires_at>$4::timestamptz ON CONFLICT(request_id) DO NOTHING`,
           [event, target, p.user_id, this.time()],
         );
       }
