@@ -143,7 +143,7 @@ export class EntryService {
   }
   async user(authId: string, db = this.db): Promise<string> {
     const [u] = await db.query<{ id: string }>(
-      `INSERT INTO users(auth_id,display_name) VALUES ($1,'Guest') ON CONFLICT(auth_id) DO UPDATE SET auth_id=EXCLUDED.auth_id RETURNING id`,
+      `INSERT INTO users(auth_id,display_name) VALUES ($1::uuid,'Guest') ON CONFLICT(auth_id) DO UPDATE SET auth_id=EXCLUDED.auth_id RETURNING id`,
       [authId],
     );
     return u.id;
@@ -151,7 +151,7 @@ export class EntryService {
   async member(authId: string, eventId: string, db = this.db): Promise<Member> {
     uuid(eventId);
     const [p] = await db.query<Member>(
-      `SELECT p.* FROM event_participants p JOIN users u ON u.id=p.user_id WHERE p.event_id=$1 AND u.auth_id=$2`,
+      `SELECT p.* FROM event_participants p JOIN users u ON u.id=p.user_id WHERE p.event_id=$1::uuid AND u.auth_id=$2::uuid`,
       [eventId, authId],
     );
     if (!p) throw new HttpError(404, "You have not joined this event.");
@@ -159,7 +159,7 @@ export class EntryService {
   }
   async questions(eventId: string, db = this.db) {
     return db.query<Question>(
-      "SELECT id,prompt,kind,options,position FROM questions WHERE event_id=$1 ORDER BY position",
+      "SELECT id,prompt,kind,options,position FROM questions WHERE event_id=$1::uuid ORDER BY position",
       [eventId],
     );
   }
@@ -185,12 +185,12 @@ export class EntryService {
       const userId = await this.user(authId, db);
       const eventCode = randomBytes(5).toString("hex").toUpperCase();
       const [e] = await db.query<Event>(
-        `INSERT INTO events(name,event_code,status,organizer_id,ends_at) VALUES ($1,$2,'active',$3,$4) RETURNING id,name,status,event_code,ends_at`,
+        `INSERT INTO events(name,event_code,status,organizer_id,ends_at) VALUES ($1,$2,'active',$3::uuid,$4) RETURNING id,name,status,event_code,ends_at`,
         [name, eventCode, userId, endsAt],
       );
       for (let i = 0; i < bank.length; i++)
         await db.query(
-          'INSERT INTO questions(event_id,kind,prompt,options,position) VALUES ($1,$2::"QuestionKind",$3,$4::text[],$5)',
+          'INSERT INTO questions(event_id,kind,prompt,options,position) VALUES ($1::uuid,$2::"QuestionKind",$3,$4::text[],$5)',
           [e.id, bank[i][0], bank[i][1], [...bank[i][2]], i],
         );
       return {
@@ -203,7 +203,7 @@ export class EntryService {
   async organiser(authId: string, eventId: string, origin: string) {
     uuid(eventId);
     const [e] = await this.db.query<Event>(
-      "SELECT e.* FROM events e JOIN users u ON u.id=e.organizer_id WHERE e.id=$1 AND u.auth_id=$2",
+      "SELECT e.* FROM events e JOIN users u ON u.id=e.organizer_id WHERE e.id=$1::uuid AND u.auth_id=$2::uuid",
       [eventId, authId],
     );
     if (!e) throw new HttpError(404, "Event not found.");
@@ -212,7 +212,7 @@ export class EntryService {
       joinCode: e.event_code,
       joinUrl: `${origin}/join/${e.event_code}`,
       meetingPoints: await this.db.query(
-        'SELECT id,label,photo_url AS "photoUrl",direction FROM meeting_points WHERE event_id=$1 ORDER BY position',
+        'SELECT id,label,photo_url AS "photoUrl",direction FROM meeting_points WHERE event_id=$1::uuid ORDER BY position',
         [eventId],
       ),
     };
@@ -226,7 +226,7 @@ export class EntryService {
     await this.db.transaction(async (db) => {
       const userId = await this.user(authId, db);
       await db.query(
-        `INSERT INTO event_participants(event_id,user_id,display_name,goal) VALUES($1,$2,$3,$4) ON CONFLICT(event_id,user_id) DO NOTHING`,
+        `INSERT INTO event_participants(event_id,user_id,display_name,goal) VALUES($1::uuid,$2::uuid,$3,$4) ON CONFLICT(event_id,user_id) DO NOTHING`,
         [e.id, userId, name, goal],
       );
     });
@@ -237,7 +237,7 @@ export class EntryService {
     const e = await this.event(eventId);
     this.active(e);
     const answers = await this.db.query<Answer>(
-      'SELECT question_id AS "questionId",option_index AS choice,skipped FROM answers WHERE event_id=$1 AND user_id=$2',
+      'SELECT question_id AS "questionId",option_index AS choice,skipped FROM answers WHERE event_id=$1::uuid AND user_id=$2::uuid',
       [eventId, p.user_id],
     );
     const topics = await this.db.query<{
@@ -245,7 +245,7 @@ export class EntryService {
       topic: string;
       visible: boolean;
     }>(
-      "SELECT interest_type AS type,topic,share_consent AS visible FROM user_interests WHERE event_id=$1 AND user_id=$2 ORDER BY interest_type,topic",
+      "SELECT interest_type AS type,topic,share_consent AS visible FROM user_interests WHERE event_id=$1::uuid AND user_id=$2::uuid ORDER BY interest_type,topic",
       [eventId, p.user_id],
     );
     return {
@@ -299,7 +299,7 @@ export class EntryService {
     await this.db.transaction(async (db) => {
       const p = await this.member(authId, eventId, db);
       await db.query(
-        "UPDATE event_participants SET display_name=$3,goal=$4,field=$5,fun_fact=$6,field_visible=$7,fun_fact_visible=$8 WHERE event_id=$1 AND user_id=$2",
+        "UPDATE event_participants SET display_name=$3,goal=$4,field=$5,fun_fact=$6,field_visible=$7,fun_fact_visible=$8 WHERE event_id=$1::uuid AND user_id=$2::uuid",
         [
           eventId,
           p.user_id,
@@ -312,12 +312,12 @@ export class EntryService {
         ],
       );
       await db.query(
-        "DELETE FROM user_interests WHERE event_id=$1 AND user_id=$2",
+        "DELETE FROM user_interests WHERE event_id=$1::uuid AND user_id=$2::uuid",
         [eventId, p.user_id],
       );
       for (const t of topics)
         await db.query(
-          'INSERT INTO user_interests(event_id,user_id,interest_type,topic,share_consent) VALUES($1,$2,$3::"InterestType",$4,$5)',
+          'INSERT INTO user_interests(event_id,user_id,interest_type,topic,share_consent) VALUES($1::uuid,$2::uuid,$3::"InterestType",$4,$5)',
           [eventId, p.user_id, t.type, t.topic, t.visible],
         );
     });
@@ -357,12 +357,12 @@ export class EntryService {
     await this.db.transaction(async (db) => {
       for (const a of answers)
         await db.query(
-          `INSERT INTO answers(event_id,user_id,question_id,option_index,skipped) VALUES($1,$2,$3,$4,$5) ON CONFLICT(event_id,user_id,question_id) DO UPDATE SET option_index=EXCLUDED.option_index,skipped=EXCLUDED.skipped`,
+          `INSERT INTO answers(event_id,user_id,question_id,option_index,skipped) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5) ON CONFLICT(event_id,user_id,question_id) DO UPDATE SET option_index=EXCLUDED.option_index,skipped=EXCLUDED.skipped`,
           [eventId, p.user_id, a.questionId, a.choice, a.skipped],
         );
       if (complete)
         await db.query(
-          "UPDATE event_participants SET setup_complete=true WHERE event_id=$1 AND user_id=$2",
+          "UPDATE event_participants SET setup_complete=true WHERE event_id=$1::uuid AND user_id=$2::uuid",
           [eventId, p.user_id],
         );
     });
@@ -379,14 +379,14 @@ export class EntryService {
     const now = this.now(),
       until = open ? new Date(now + 15 * 60 * 1000).toISOString() : null;
     await this.db.transaction(async (db) => {
-      await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [eventId]);
+      await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [eventId]);
       const active = await db.query(
-        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND $2 IN(user_a_id,user_b_id)",
+        "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL AND $2::uuid IN(user_a_id,user_b_id)",
         [eventId, p.user_id],
       );
       if (active.length) throw new HttpError(409, "Not available right now.");
       await db.query(
-        `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4,opened_at=$5 WHERE event_id=$1 AND user_id=$2`,
+        `UPDATE event_participants SET availability_status=$3::"AvailabilityStatus",available_until=$4,opened_at=$5 WHERE event_id=$1::uuid AND user_id=$2::uuid`,
         [
           eventId,
           p.user_id,
@@ -403,7 +403,7 @@ export class EntryService {
     this.active(await this.event(eventId));
     // Only this trusted server operation reads other participants. Never return raw rows.
     const rows = await this.db.query<Candidate>(
-      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1 AND (p.user_id=$2 OR (p.availability_status='open' AND p.available_until>$3 AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.event_id=p.event_id AND s.closed_at IS NULL AND p.user_id IN(s.user_a_id,s.user_b_id))))`,
+      `SELECT p.user_id AS id,p.display_name AS "displayName",p.goal,p.available_until AS "openUntil",p.opened_at AS "openedAt",COALESCE((SELECT json_agg(json_build_object('questionId',a.question_id,'choice',a.option_index,'skipped',a.skipped)) FROM answers a WHERE a.event_id=p.event_id AND a.user_id=p.user_id),'[]'::json) AS answers FROM event_participants p WHERE p.event_id=$1::uuid AND (p.user_id=$2::uuid OR (p.availability_status='open' AND p.available_until>$3 AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.event_id=p.event_id AND s.closed_at IS NULL AND p.user_id IN(s.user_a_id,s.user_b_id))))`,
       [eventId, p.user_id, new Date(this.now()).toISOString()],
     );
     for (const row of rows) {
@@ -416,7 +416,7 @@ export class EntryService {
       rows.map((r) => [r.id, randomBytes(4).readUInt32BE()]),
     );
     const met = await this.db.query<{ other: string }>(
-      "SELECT CASE WHEN user_a_id=$2 THEN user_b_id ELSE user_a_id END AS other FROM interactions WHERE event_id=$1 AND $2 IN(user_a_id,user_b_id)",
+      "SELECT CASE WHEN user_a_id=$2::uuid THEN user_b_id ELSE user_a_id END AS other FROM interactions WHERE event_id=$1::uuid AND $2::uuid IN(user_a_id,user_b_id)",
       [eventId, p.user_id],
     );
     for (const row of rows) row.met = met.some((m) => m.other === row.id);
@@ -431,15 +431,15 @@ export class EntryService {
   }
   async leave(authId: string, eventId: string) {
     await this.db.transaction(async (db) => {
-      await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [eventId]);
+      await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [eventId]);
       const p = await this.member(authId, eventId, db);
       const live = await db.query(
-        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND $2 IN(user_a_id,user_b_id)",
+        "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL AND $2::uuid IN(user_a_id,user_b_id)",
         [eventId, p.user_id],
       );
       if (live.length) throw new HttpError(409, "Not available right now.");
       await db.query(
-        "DELETE FROM event_participants WHERE event_id=$1 AND user_id=$2",
+        "DELETE FROM event_participants WHERE event_id=$1::uuid AND user_id=$2::uuid",
         [eventId, p.user_id],
       );
     });

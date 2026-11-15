@@ -58,7 +58,7 @@ export class ConnectionService {
     return p;
   }
   private async lock(db: DB, event: string) {
-    await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [event]);
+    await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [event]);
   }
   async state(
     auth: string,
@@ -68,7 +68,7 @@ export class ConnectionService {
   > {
     const p = await this.context(auth, event);
     const [own] = await this.db.query<{ short_code: string }>(
-      "SELECT short_code FROM event_participants WHERE event_id=$1 AND user_id=$2",
+      "SELECT short_code FROM event_participants WHERE event_id=$1::uuid AND user_id=$2::uuid",
       [event, p.user_id],
     );
     const rows = await this.db.query<Connection & { side: string }>(
@@ -86,7 +86,7 @@ export class ConnectionService {
       expiresAt: iso(r.expiresAt),
     });
     const sessions = await this.db.query<SessionRow>(
-      "SELECT * FROM sessions WHERE event_id=$1 AND $2 IN(user_a_id,user_b_id) ORDER BY created_at DESC,id DESC",
+      "SELECT * FROM sessions WHERE event_id=$1::uuid AND $2::uuid IN(user_a_id,user_b_id) ORDER BY created_at DESC,id DESC",
       [event, p.user_id],
     );
     const live =
@@ -118,7 +118,7 @@ export class ConnectionService {
   ): Promise<MeetSession> {
     const a = s.user_a_id === viewer;
     const [p] = await db.query<{ display_name: string; goal: string }>(
-      "SELECT display_name,goal FROM event_participants WHERE event_id=$1 AND user_id=$2",
+      "SELECT display_name,goal FROM event_participants WHERE event_id=$1::uuid AND user_id=$2::uuid",
       [event, a ? s.user_b_id : s.user_a_id],
     );
     return {
@@ -165,7 +165,7 @@ export class ConnectionService {
         availability_status: string;
         available_until: string | Date | null;
       }>(
-        `SELECT user_id,display_name,goal,availability_status,available_until FROM event_participants WHERE event_id=$1 AND ${byCode ? "short_code=$2" : "user_id=$2::uuid"}`,
+        `SELECT user_id,display_name,goal,availability_status,available_until FROM event_participants WHERE event_id=$1::uuid AND ${byCode ? "short_code=$2" : "user_id=$2::uuid"}`,
         [event, entered ?? targetId],
       );
       if (!target) {
@@ -176,16 +176,16 @@ export class ConnectionService {
       if (target.user_id === p.user_id) return neutral();
       const pair = [event, p.user_id, target.user_id];
       const blocked = await db.query(
-        "SELECT 1 FROM blocks WHERE event_id=$1 AND ((actor_id=$2 AND target_id=$3) OR (actor_id=$3 AND target_id=$2))",
+        "SELECT 1 FROM blocks WHERE event_id=$1::uuid AND ((actor_id=$2::uuid AND target_id=$3::uuid) OR (actor_id=$3::uuid AND target_id=$2::uuid))",
         pair,
       );
       const active = await db.query(
-        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND (user_a_id IN($2,$3) OR user_b_id IN($2,$3))",
+        "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL AND (user_a_id IN($2::uuid,$3::uuid) OR user_b_id IN($2::uuid,$3::uuid))",
         pair,
       );
       if (blocked.length || active.length) return neutral();
       const history = await db.query<RequestRow>(
-        `SELECT r.*,d.decision FROM connection_requests r LEFT JOIN connection_request_decisions d ON d.request_id=r.id WHERE r.event_id=$1 AND ((sender_id=$2 AND r.recipient_id=$3) OR (sender_id=$3 AND r.recipient_id=$2)) ORDER BY r.created_at DESC,r.id DESC`,
+        `SELECT r.*,d.decision FROM connection_requests r LEFT JOIN connection_request_decisions d ON d.request_id=r.id WHERE r.event_id=$1::uuid AND ((sender_id=$2::uuid AND r.recipient_id=$3::uuid) OR (sender_id=$3::uuid AND r.recipient_id=$2::uuid)) ORDER BY r.created_at DESC,r.id DESC`,
         pair,
       );
       const pending = history.find(
@@ -224,11 +224,11 @@ export class ConnectionService {
       )
         return neutral();
       const incoming = await db.query(
-        "SELECT id FROM connection_requests WHERE event_id=$1 AND recipient_id=$2 AND status='pending' AND NOT withdrawn AND expires_at>$3",
+        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND recipient_id=$2::uuid AND status='pending' AND NOT withdrawn AND expires_at>$3",
         [event, target.user_id, this.time()],
       );
       const recent = await db.query(
-        "SELECT id FROM connection_requests WHERE event_id=$1 AND sender_id=$2 AND created_at>$3",
+        "SELECT id FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND created_at>$3",
         [event, p.user_id, new Date(this.now() - 3600000).toISOString()],
       );
       if (
@@ -237,7 +237,7 @@ export class ConnectionService {
       )
         return neutral();
       const [shared] = await db.query<{ reason: string }>(
-        `SELECT q.options[a.option_index+1] AS reason FROM answers a JOIN answers b ON b.event_id=a.event_id AND b.question_id=a.question_id JOIN questions q ON q.event_id=a.event_id AND q.id=a.question_id WHERE a.event_id=$1 AND a.user_id=$2 AND b.user_id=$3 AND NOT a.skipped AND NOT b.skipped AND a.option_index=b.option_index ORDER BY q.position LIMIT 1`,
+        `SELECT q.options[a.option_index+1] AS reason FROM answers a JOIN answers b ON b.event_id=a.event_id AND b.question_id=a.question_id JOIN questions q ON q.event_id=a.event_id AND q.id=a.question_id WHERE a.event_id=$1::uuid AND a.user_id=$2::uuid AND b.user_id=$3::uuid AND NOT a.skipped AND NOT b.skipped AND a.option_index=b.option_index ORDER BY q.position LIMIT 1`,
         pair,
       );
       const reason =
@@ -246,7 +246,7 @@ export class ConnectionService {
           ? `You're both here to ${p.goal}`
           : `${p.goal} · ${target.goal}`);
       await db.query(
-        `INSERT INTO connection_requests(event_id,sender_id,recipient_id,duration,shared_reason,kind,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        `INSERT INTO connection_requests(event_id,sender_id,recipient_id,duration,shared_reason,kind,created_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8)`,
         [
           ...pair,
           duration,
@@ -261,22 +261,22 @@ export class ConnectionService {
   }
   private async accept(db: DB, event: string, r: RequestRow) {
     const busy = await db.query(
-      "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND (user_a_id IN($2,$3) OR user_b_id IN($2,$3))",
+      "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL AND (user_a_id IN($2::uuid,$3::uuid) OR user_b_id IN($2::uuid,$3::uuid))",
       [event, r.sender_id, r.recipient_id],
     );
     const blocked = await db.query(
-      "SELECT 1 FROM blocks WHERE event_id=$1 AND ((actor_id=$2 AND target_id=$3) OR (actor_id=$3 AND target_id=$2))",
+      "SELECT 1 FROM blocks WHERE event_id=$1::uuid AND ((actor_id=$2::uuid AND target_id=$3::uuid) OR (actor_id=$3::uuid AND target_id=$2::uuid))",
       [event, r.sender_id, r.recipient_id],
     );
     if (busy.length || blocked.length) return neutral();
     let point: MeetingPoint | null = null;
     if (r.kind === "board") {
       const points = await db.query<MeetingPoint>(
-        'SELECT id,label,photo_url AS "photoUrl",direction FROM meeting_points WHERE event_id=$1 ORDER BY position',
+        'SELECT id,label,photo_url AS "photoUrl",direction FROM meeting_points WHERE event_id=$1::uuid ORDER BY position',
         [event],
       );
       const live = await db.query<{ id: string; n: number }>(
-        `SELECT meeting_point->>'id' AS id,count(*)::int AS n FROM sessions WHERE event_id=$1 AND closed_at IS NULL AND meeting_point IS NOT NULL GROUP BY meeting_point->>'id'`,
+        `SELECT meeting_point->>'id' AS id,count(*)::int AS n FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL AND meeting_point IS NOT NULL GROUP BY meeting_point->>'id'`,
         [event],
       );
       point = assignMeetingPoint(points, new Map(live.map((p) => [p.id, p.n])));
@@ -284,7 +284,7 @@ export class ConnectionService {
     }
     const script = await snapshotArc(db, event, r.sender_id, r.recipient_id);
     await db.query(
-      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at,arc_script) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb)`,
+      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at,arc_script) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7::jsonb,$8,$9,$10::jsonb)`,
       [
         event,
         r.id,
@@ -299,15 +299,15 @@ export class ConnectionService {
       ],
     );
     await db.query(
-      "UPDATE connection_requests SET status='accepted' WHERE id=$1 AND event_id=$2",
+      "UPDATE connection_requests SET status='accepted' WHERE id=$1::uuid AND event_id=$2::uuid",
       [r.id, event],
     );
     await db.query(
-      `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) VALUES($1,$2,'accepted')`,
+      `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) VALUES($1::uuid,$2::uuid,'accepted')`,
       [r.id, r.recipient_id],
     );
     await db.query(
-      `UPDATE event_participants SET availability_status='busy',available_until=null WHERE event_id=$1 AND user_id IN($2,$3)`,
+      `UPDATE event_participants SET availability_status='busy',available_until=null WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)`,
       [event, r.sender_id, r.recipient_id],
     );
   }
@@ -324,7 +324,7 @@ export class ConnectionService {
       await this.lock(db, event);
       const p = await this.context(auth, event, db);
       const [r] = await db.query<RequestRow>(
-        `SELECT r.*,d.decision FROM connection_requests r LEFT JOIN connection_request_decisions d ON d.request_id=r.id WHERE r.event_id=$1 AND r.id=$2`,
+        `SELECT r.*,d.decision FROM connection_requests r LEFT JOIN connection_request_decisions d ON d.request_id=r.id WHERE r.event_id=$1::uuid AND r.id=$2::uuid`,
         [event, requestId],
       );
       if (
@@ -340,12 +340,12 @@ export class ConnectionService {
         return neutral();
       if (action === "cancel")
         await db.query(
-          "UPDATE connection_requests SET withdrawn=true WHERE event_id=$1 AND id=$2",
+          "UPDATE connection_requests SET withdrawn=true WHERE event_id=$1::uuid AND id=$2::uuid",
           [event, r.id],
         );
       else if (action === "later")
         await db.query(
-          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) VALUES($1,$2,'declined') ON CONFLICT(request_id) DO NOTHING`,
+          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) VALUES($1::uuid,$2::uuid,'declined') ON CONFLICT(request_id) DO NOTHING`,
           [r.id, r.recipient_id],
         );
       else {
@@ -363,7 +363,7 @@ export class ConnectionService {
       await this.lock(db, event);
       const p = await this.context(auth, event, db);
       const [s] = await db.query<SessionRow>(
-        "SELECT * FROM sessions WHERE event_id=$1 AND id=$2 AND $3 IN(user_a_id,user_b_id)",
+        "SELECT * FROM sessions WHERE event_id=$1::uuid AND id=$2::uuid AND $3::uuid IN(user_a_id,user_b_id)",
         [event, id, p.user_id],
       );
       if (!s) throw new HttpError(404, "Session not found.");
@@ -375,11 +375,11 @@ export class ConnectionService {
       const a = s.user_a_id === p.user_id;
       if (action === "cancel") {
         await db.query(
-          "UPDATE sessions SET closed_at=$3 WHERE event_id=$1 AND id=$2",
+          "UPDATE sessions SET closed_at=$3 WHERE event_id=$1::uuid AND id=$2::uuid",
           [event, id, this.time()],
         );
         await db.query(
-          `UPDATE event_participants SET availability_status='open',available_until=$4,opened_at=$5 WHERE event_id=$1 AND user_id IN($2,$3)`,
+          `UPDATE event_participants SET availability_status='open',available_until=$4,opened_at=$5 WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)`,
           [
             event,
             s.user_a_id,
@@ -392,17 +392,17 @@ export class ConnectionService {
         if (!(a ? s.arrived_a : s.arrived_b))
           return fail("Tap I’m here before starting.");
         await db.query(
-          "UPDATE sessions SET started_at=COALESCE(started_at,$3) WHERE event_id=$1 AND id=$2",
+          "UPDATE sessions SET started_at=COALESCE(started_at,$3) WHERE event_id=$1::uuid AND id=$2::uuid",
           [event, id, this.time()],
         );
       } else if (action === "late") {
         await db.query(
-          `UPDATE sessions SET ${a ? "late_a" : "late_b"}=true WHERE event_id=$1 AND id=$2`,
+          `UPDATE sessions SET ${a ? "late_a" : "late_b"}=true WHERE event_id=$1::uuid AND id=$2::uuid`,
           [event, id],
         );
       } else {
         await db.query(
-          `UPDATE sessions SET ${a ? "arrived_a" : "arrived_b"}=true,${a ? "late_a" : "late_b"}=false,started_at=CASE WHEN ${a ? "arrived_b" : "arrived_a"} THEN COALESCE(started_at,$3) ELSE started_at END WHERE event_id=$1 AND id=$2`,
+          `UPDATE sessions SET ${a ? "arrived_a" : "arrived_b"}=true,${a ? "late_a" : "late_b"}=false,started_at=CASE WHEN ${a ? "arrived_b" : "arrived_a"} THEN COALESCE(started_at,$3) ELSE started_at END WHERE event_id=$1::uuid AND id=$2::uuid`,
           [event, id, this.time()],
         );
       }
@@ -428,31 +428,31 @@ export class ConnectionService {
       let target = participant;
       if (requestId) {
         const [r] = await db.query<{ sender_id: string; recipient_id: string }>(
-          "SELECT sender_id,recipient_id FROM connection_requests WHERE event_id=$1 AND id=$2 AND $3 IN(sender_id,recipient_id)",
+          "SELECT sender_id,recipient_id FROM connection_requests WHERE event_id=$1::uuid AND id=$2::uuid AND $3::uuid IN(sender_id,recipient_id)",
           [event, requestId, p.user_id],
         );
         if (!r) throw new HttpError(404, "Participant not found.");
         target = r.sender_id === p.user_id ? r.recipient_id : r.sender_id;
       }
       const [other] = await db.query(
-        "SELECT 1 FROM event_participants WHERE event_id=$1 AND user_id=$2",
+        "SELECT 1 FROM event_participants WHERE event_id=$1::uuid AND user_id=$2::uuid",
         [event, target],
       );
       if (!other || target === p.user_id)
         throw new HttpError(404, "Participant not found.");
       if (report)
         await db.query(
-          "INSERT INTO reports(event_id,actor_id,target_id,category) VALUES($1,$2,$3,$4)",
+          "INSERT INTO reports(event_id,actor_id,target_id,category) VALUES($1::uuid,$2::uuid,$3::uuid,$4)",
           [event, p.user_id, target, category],
         );
       else {
         await db.query(
-          "INSERT INTO blocks(event_id,actor_id,target_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+          "INSERT INTO blocks(event_id,actor_id,target_id) VALUES($1::uuid,$2::uuid,$3::uuid) ON CONFLICT DO NOTHING",
           [event, p.user_id, target],
         );
         // Dismiss only the blocker's own inbox, with exactly Later's privacy rule.
         await db.query(
-          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) SELECT id,recipient_id,'declined' FROM connection_requests WHERE event_id=$1 AND sender_id=$2 AND recipient_id=$3 AND status='pending' AND NOT withdrawn AND expires_at>$4 ON CONFLICT(request_id) DO NOTHING`,
+          `INSERT INTO connection_request_decisions(request_id,recipient_id,decision) SELECT id,recipient_id,'declined' FROM connection_requests WHERE event_id=$1::uuid AND sender_id=$2::uuid AND recipient_id=$3::uuid AND status='pending' AND NOT withdrawn AND expires_at>$4 ON CONFLICT(request_id) DO NOTHING`,
           [event, target, p.user_id, this.time()],
         );
       }
@@ -489,7 +489,7 @@ export class ConnectionService {
     await this.db.transaction(async (db) => {
       await this.lock(db, event);
       const live = await db.query(
-        "SELECT 1 FROM sessions WHERE event_id=$1 AND closed_at IS NULL",
+        "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND closed_at IS NULL",
         [event],
       );
       if (live.length)
@@ -497,10 +497,10 @@ export class ConnectionService {
           409,
           "Meeting points are in use. Try again after sessions close.",
         );
-      await db.query("DELETE FROM meeting_points WHERE event_id=$1", [event]);
+      await db.query("DELETE FROM meeting_points WHERE event_id=$1::uuid", [event]);
       for (const [i, p] of points.entries())
         await db.query(
-          "INSERT INTO meeting_points(event_id,label,photo_url,direction,position) VALUES($1,$2,$3,$4,$5)",
+          "INSERT INTO meeting_points(event_id,label,photo_url,direction,position) VALUES($1::uuid,$2,$3,$4,$5)",
           [event, p.label, p.photoUrl, p.direction, i],
         );
     });

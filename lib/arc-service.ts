@@ -3,21 +3,21 @@ import { buildArc, type Arc, type ArcPerson } from "./arc";
 export async function snapshotArc(db: DB, event: string, a: string, b: string) {
   const person = async (id: string): Promise<ArcPerson> => {
     const [p] = await db.query<{ goal: string }>(
-      "SELECT goal FROM event_participants WHERE event_id=$1 AND user_id=$2",
+      "SELECT goal FROM event_participants WHERE event_id=$1::uuid AND user_id=$2::uuid",
       [event, id],
     );
     const answers = await db.query<ArcPerson["answers"][number]>(
-      'SELECT question_id AS "questionId",option_index AS choice,skipped FROM answers WHERE event_id=$1 AND user_id=$2',
+      'SELECT question_id AS "questionId",option_index AS choice,skipped FROM answers WHERE event_id=$1::uuid AND user_id=$2::uuid',
       [event, id],
     );
     const interests = await db.query<ArcPerson["interests"][number]>(
-      "SELECT interest_type,topic,share_consent FROM user_interests WHERE event_id=$1 AND user_id=$2 AND share_consent",
+      "SELECT interest_type,topic,share_consent FROM user_interests WHERE event_id=$1::uuid AND user_id=$2::uuid AND share_consent",
       [event, id],
     );
     return { ...p, answers, interests };
   };
   const [e] = await db.query<{ name: string }>(
-    "SELECT name FROM events WHERE id=$1",
+    "SELECT name FROM events WHERE id=$1::uuid",
     [event],
   );
   return buildArc(await person(a), await person(b), {
@@ -68,7 +68,7 @@ export class ArcService {
     const p = await entry.member(auth, event, db);
     entry.active(await entry.event(event));
     const [s] = await db.query<Row>(
-      "SELECT * FROM sessions WHERE id=$1 AND event_id=$2 AND $3 IN(user_a_id,user_b_id)",
+      "SELECT * FROM sessions WHERE id=$1::uuid AND event_id=$2::uuid AND $3::uuid IN(user_a_id,user_b_id)",
       [id, event, p.user_id],
     );
     if (!s || !s.arc_script) throw new HttpError(404, "Session not found.");
@@ -76,7 +76,7 @@ export class ArcService {
   }
   async viewBySession(event: string, viewer: string, id: string) {
     const [u] = await this.db.query<{ auth_id: string }>(
-      "SELECT auth_id FROM users WHERE id=$1",
+      "SELECT auth_id FROM users WHERE id=$1::uuid",
       [viewer],
     );
     return this.view(u.auth_id, event, id);
@@ -85,7 +85,7 @@ export class ArcService {
     const { s, p } = await this.context(auth, event, id);
     const a = p.user_id === s.user_a_id;
     const choices = await this.db.query<Choice>(
-      "SELECT * FROM session_choices WHERE session_id=$1",
+      "SELECT * FROM session_choices WHERE session_id=$1::uuid",
       [id],
     );
     const own = choices.find((c) => c.user_id === p.user_id),
@@ -100,12 +100,12 @@ export class ArcService {
     const contacts =
       outcome === "exchange"
         ? await this.db.query<{ field: string; value: string }>(
-            "SELECT field,value FROM user_contacts WHERE user_id=$1 AND visibility='mutual_connection' AND share_consent ORDER BY field",
+            "SELECT field,value FROM user_contacts WHERE user_id=$1::uuid AND visibility='mutual_connection' AND share_consent ORDER BY field",
             [a ? s.user_b_id : s.user_a_id],
           )
         : [];
     const [note] = await this.db.query<{ text: string }>(
-      "SELECT text FROM session_notes WHERE session_id=$1 AND user_id=$2",
+      "SELECT text FROM session_notes WHERE session_id=$1::uuid AND user_id=$2::uuid",
       [id, p.user_id],
     );
     const closing = !!s.closed_at;
@@ -182,7 +182,7 @@ export class ArcService {
     )
       return fail("Send the current card position.");
     await this.db.transaction(async (db) => {
-      await db.query("SELECT id FROM events WHERE id=$1 FOR UPDATE", [event]);
+      await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [event]);
       const { s, p } = await this.context(auth, event, id, db);
       if (!s.started_at)
         return fail("Arrive before starting the conversation.");
@@ -198,7 +198,7 @@ export class ArcService {
         if (typeof body.optedIn !== "boolean")
           return fail("Choose contact consent.");
         await db.query(
-          "INSERT INTO session_choices(session_id,user_id,choice,opted_in,done) VALUES($1,$2,$3,$4,true) ON CONFLICT(session_id,user_id) DO NOTHING",
+          "INSERT INTO session_choices(session_id,user_id,choice,opted_in,done) VALUES($1::uuid,$2::uuid,$3,$4,true) ON CONFLICT(session_id,user_id) DO NOTHING",
           [id, p.user_id, choice, body.optedIn],
         );
         return;
@@ -206,22 +206,22 @@ export class ArcService {
       if (action === "keep-talking") {
         if (!s.closed_at) return;
         const done = await db.query(
-          "SELECT 1 FROM session_choices WHERE session_id=$1 AND done",
+          "SELECT 1 FROM session_choices WHERE session_id=$1::uuid AND done",
           [id],
         );
         if (done.length)
           throw new HttpError(409, "This conversation is complete.");
         const busy = await db.query(
-          "SELECT 1 FROM sessions WHERE event_id=$1 AND id<>$2 AND closed_at IS NULL AND (user_a_id IN($3,$4) OR user_b_id IN($3,$4))",
+          "SELECT 1 FROM sessions WHERE event_id=$1::uuid AND id<>$2::uuid AND closed_at IS NULL AND (user_a_id IN($3::uuid,$4::uuid) OR user_b_id IN($3::uuid,$4::uuid))",
           [event, id, s.user_a_id, s.user_b_id],
         );
         if (busy.length) throw new HttpError(409, "Not available right now.");
         await db.query(
-          "UPDATE sessions SET closed_at=null,close_reason=null,arc_position=resume_position WHERE id=$1",
+          "UPDATE sessions SET closed_at=null,close_reason=null,arc_position=resume_position WHERE id=$1::uuid",
           [id],
         );
         await db.query(
-          "UPDATE event_participants SET availability_status='busy',available_until=null WHERE event_id=$1 AND user_id IN($2,$3)",
+          "UPDATE event_participants SET availability_status='busy',available_until=null WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)",
           [event, s.user_a_id, s.user_b_id],
         );
         return;
@@ -241,15 +241,15 @@ export class ArcService {
             ? "timer"
             : "either";
         await db.query(
-          "UPDATE sessions SET closed_at=$2,close_reason=$3,resume_position=arc_position,arc_position=jsonb_array_length(arc_script->'cards')-1,arc_skipped='{}' WHERE id=$1 AND closed_at IS NULL",
+          "UPDATE sessions SET closed_at=$2,close_reason=$3,resume_position=arc_position,arc_position=jsonb_array_length(arc_script->'cards')-1,arc_skipped='{}' WHERE id=$1::uuid AND closed_at IS NULL",
           [id, new Date(this.now()).toISOString(), reason],
         );
         await db.query(
-          "UPDATE event_participants SET availability_status='unavailable',available_until=null WHERE event_id=$1 AND user_id IN($2,$3)",
+          "UPDATE event_participants SET availability_status='unavailable',available_until=null WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)",
           [event, s.user_a_id, s.user_b_id],
         );
         await db.query(
-          "INSERT INTO interactions(id,event_id,user_a_id,user_b_id,started_at,ended_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET ended_at=excluded.ended_at",
+          "INSERT INTO interactions(id,event_id,user_a_id,user_b_id,started_at,ended_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6) ON CONFLICT(id) DO UPDATE SET ended_at=excluded.ended_at",
           [
             id,
             event,
@@ -261,7 +261,7 @@ export class ArcService {
         );
       } else
         await db.query(
-          "UPDATE sessions SET arc_position=$2,arc_skipped=CASE WHEN $3 THEN array_append(arc_skipped,arc_position) ELSE arc_skipped END WHERE id=$1",
+          "UPDATE sessions SET arc_position=$2,arc_skipped=CASE WHEN $3 THEN array_append(arc_skipped,arc_position) ELSE arc_skipped END WHERE id=$1::uuid",
           [id, next, action === "skip"],
         );
     });
@@ -273,12 +273,12 @@ export class ArcService {
       return fail("Use a note up to 500 characters.");
     if (value.trim())
       await this.db.query(
-        "INSERT INTO session_notes(session_id,user_id,text) VALUES($1,$2,$3) ON CONFLICT(session_id,user_id) DO UPDATE SET text=excluded.text",
+        "INSERT INTO session_notes(session_id,user_id,text) VALUES($1::uuid,$2::uuid,$3) ON CONFLICT(session_id,user_id) DO UPDATE SET text=excluded.text",
         [id, p.user_id, value.trim()],
       );
     else
       await this.db.query(
-        "DELETE FROM session_notes WHERE session_id=$1 AND user_id=$2",
+        "DELETE FROM session_notes WHERE session_id=$1::uuid AND user_id=$2::uuid",
         [id, p.user_id],
       );
     return { ok: true };
@@ -291,7 +291,7 @@ export class ArcService {
   ) {
     const { s, p } = await this.context(auth, event, id);
     const [done] = await this.db.query(
-      "SELECT 1 FROM session_choices WHERE session_id=$1 AND user_id=$2 AND done",
+      "SELECT 1 FROM session_choices WHERE session_id=$1::uuid AND user_id=$2::uuid AND done",
       [id, p.user_id],
     );
     if (!s.closed_at || !done) return fail("Finish the conversation first.");
@@ -313,7 +313,7 @@ export class ArcService {
       return fail("Check the feedback options.");
     if (values.some((v) => v !== null))
       await this.db.query(
-        "INSERT INTO feedback(interaction_id,user_id,conversation_ease,perceived_value,willingness_to_reconnect) VALUES($1,$2,$3,$4,$5) ON CONFLICT(interaction_id,user_id) DO NOTHING",
+        "INSERT INTO feedback(interaction_id,user_id,conversation_ease,perceived_value,willingness_to_reconnect) VALUES($1::uuid,$2::uuid,$3,$4,$5) ON CONFLICT(interaction_id,user_id) DO NOTHING",
         [id, p.user_id, ...values],
       );
     return { ok: true };
@@ -325,7 +325,7 @@ export class ArcService {
       displayName: string;
       eventName: string;
     }>(
-      `SELECT s.id,p.display_name AS "displayName",e.name AS "eventName" FROM sessions s JOIN session_choices c ON c.session_id=s.id AND c.user_id=$2 AND c.done JOIN event_participants p ON p.event_id=s.event_id AND p.user_id=CASE WHEN s.user_a_id=$2 THEN s.user_b_id ELSE s.user_a_id END JOIN events e ON e.id=s.event_id WHERE s.event_id=$1 AND $2 IN(s.user_a_id,s.user_b_id) AND s.closed_at IS NOT NULL ORDER BY s.created_at DESC`,
+      `SELECT s.id,p.display_name AS "displayName",e.name AS "eventName" FROM sessions s JOIN session_choices c ON c.session_id=s.id AND c.user_id=$2::uuid AND c.done JOIN event_participants p ON p.event_id=s.event_id AND p.user_id=CASE WHEN s.user_a_id=$2::uuid THEN s.user_b_id ELSE s.user_a_id END JOIN events e ON e.id=s.event_id WHERE s.event_id=$1::uuid AND $2::uuid IN(s.user_a_id,s.user_b_id) AND s.closed_at IS NOT NULL ORDER BY s.created_at DESC`,
       [event, p.user_id],
     );
     return Promise.all(
