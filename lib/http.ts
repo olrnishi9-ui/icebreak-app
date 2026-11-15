@@ -153,7 +153,7 @@ export function handler(
     } catch (e) {
       if (e instanceof HttpError)
         return respond({ error: e.message }, e.status);
-      console.error("Entry API operation failed");
+      console.error("Entry API operation failed", e);
       return respond(
         { error: "Could not complete this action. Please try again." },
         500,
