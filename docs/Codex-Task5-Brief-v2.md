@@ -20,8 +20,8 @@ own §3 note disavows them, and design law 1 bans them: **never display a
 match percentage**; explanations ("complementary goals", seek/offer pairs,
 shared interests — verbatim from real fields) replace scores everywhere.
 The spec's Sent tab lists a "declined" state — **do not implement a
-visible declined state** (pending owner decision; working default is the
-design law: a non-accepted request reads as expired/closed, never
+visible declined state** (owner decided 2026-11-14: rejections stay
+invisible — final; a non-accepted request reads as expired/closed, never
 "declined").
 
 ## The quality bar
