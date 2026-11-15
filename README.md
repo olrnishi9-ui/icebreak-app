@@ -1,14 +1,96 @@
-# Icebreak
+# MeetMates
 
-Event invitations and guest entry, optional profiles and questions, and a voluntary
-“Open to chat” board, consent-based connection requests, meeting points and arrival.
-Task 3 ends when the conversation session starts; conversation cards are Task 4.
+Explore Broadly. Connect Deeply.
+
+Email-code accounts, event-scoped networking profiles, personal QR check-in, and
+consent-based introductions with conversation cards. Repository/package/deployment
+identifiers remain `icebreak-app`. Task 5A implements Part A only; Discover/Requests
+tabs, stations, notifications and extendable sessions remain Task 5B.
+
+
+## Task 5A current contract
+
+This section governs the current entry flow; earlier task reports below describe
+historical implementations. See [Task 5A validation](docs/Task5A-Validation.md)
+and the [390×844 screenshot gallery](docs/screenshots/task5a/README.md).
+
+All private routes require a Supabase bearer token verified by `auth.getUser`.
+Anonymous and unconfirmed email accounts are rejected. The SDK owns credential
+persistence; application storage stores only the last event id and UI choices.
+
+| Route | Request | Response / access |
+| --- | --- | --- |
+| `POST /api/account/resume` | `{code}` | Own existing profile, or `{event,interestTags,questions,step:"profile"}`; no membership created until save |
+| `POST /api/account/profile` | `{code,displayName,goal,...profileFields}` | Atomic join + profile save; repeat saves preserve personal QR token |
+| `GET /api/profile?eventId=…` | — | Own profile only |
+| `PUT /api/profile` | `{eventId,displayName,goal,...profileFields}` | Update own event profile, generating QR on first save |
+| `GET /api/events/:id/check-in?name=…` | Nonempty name, max 80 characters | Organiser only: up to 30 saved profiles with `participantId,displayName,checkedInAt` |
+| `POST /api/events/:id/check-in` | `{token}` or `{participant}` | Organiser only; event-scoped, idempotent check-in; returns `displayName,checkedInAt` |
+| `POST /api/qr/resolve` | `{eventId,token}` | Existing started conversation between caller and scanned participant only: `sessionId,displayName`; blocked pairs denied; no contacts |
+
+Profile fields: `role` (120), `organization` (160), `industry` (160), `field`
+(expertise, 160), `introduction` (500), optional `photo` (PNG/JPEG/WebP data URL,
+max 180,000 characters; UI file limit 130 KB), `networkingGoals` (distinct subset
+of Find collaborators / Meet investors / Find customers / Learn from experts /
+Explore opportunities), `topics` (existing typed help/learn/interest fields with
+per-topic sharing consent). Interest selections must belong to the event's
+`interest_tags`. Name and the existing event intention `goal` remain required.
+Existing legacy optional fields/consents remain supported and preserved.
+
+The owner-only profile response also includes `profileSaved`, `checkedInAt`,
+`qrToken`, `interestTags`, and `networkingGoals`. The QR contains
+`/qr/:eventId/:token`, with a 256-bit cryptographically random token, never a user
+id. Camera scanning uses native `BarcodeDetector` where available; personal-link
+entry and name search remain available on unsupported/permission-denied devices.
+
+Only checked-in participants can appear in `GET /api/events/:id/open`, and direct
+board invitations to unchecked-in participants are rejected neutrally. The existing
+face-to-face short-code fallback still works. Open-list actionable entries retain
+`participantId` by design (the client addresses requests with it). No score or
+private answer payload is added. Scanning after a started talk opens the existing
+conversation/closing UI with the participant selected. Contact release still
+requires both existing exchange choices, both opt-ins, and field-level consent;
+QR scanning neither grants consent nor changes already-saved choices.
+
+Apply **all** migrations with `npm run db:migrate`; do not edit old migrations.
+`202611150005_meetmates` adds columns to existing RLS-protected tables only (including `events.is_demo`). It
+leaves existing participants unchecked-in and does not bind fictional seed users
+to real accounts. `prisma/demo-open.sql` explicitly checks in fictional demo rows
+when run by an administrator; this is never an attendee self-check-in path.
+
+The browser scripts use the placeholder build configuration
+`NEXT_PUBLIC_SUPABASE_URL=https://meetmates-test.invalid` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY=test-public-key`. They substitute Auth credentials
+and email delivery, not the SQL/RLS implementation. The old anonymous smoke entry
+point now runs the current email-code journey. Run `npm run test:browser`,
+`npm run test:connections:browser`, and `npm run test:arc:browser` against a running
+app built with that configuration. Hosted testing additionally needs
+`TEST_APP_URL`, real public Supabase configuration, and two disposable confirmed
+email-account access tokens `TEST_ACCOUNT_TOKEN_A` / `TEST_ACCOUNT_TOKEN_B`.
+Never commit credentials. Live OTP delivery remains a separate hosted check.
+
+### Judges demo
+
+After migrating and deploying, open `/organiser`, sign in by email code, and
+choose **Create judges demo**. It creates a real event with a random event code,
+a marked example meeting-point illustration, and **no fake attendee accounts**.
+Keep its invitation open. Open it in two separate browser profiles/devices and
+sign in with two real inboxes; the organiser may reuse their own account as one
+attendee. Choose **Use Alex Morgan** / **Use Maya Chen** on the first profile
+screen, review and save, then check both in as organiser. Use `/judges-demo` for
+the presentation guide. These are optional, explicitly fictional profile values,
+not synthetic participants or matching-quality evidence. There are no shared
+passwords, hard-coded OTPs, or Auth bypasses. Demo events do not expire by default;
+set an end time on ordinary events as needed. Contact exchange still requires
+eligible saved contact fields and both opt-ins; the demo does not invent emails
+or release the login address as a contact.
 
 ## Run locally
 
-Node 22+ (24 recommended), a development Supabase project with **Anonymous
-sign-ins enabled**, and its PostgreSQL connection URLs are required for the real
-multi-user flow.
+Node 22+ (24 recommended), a development Supabase project with **email OTP
+enabled and anonymous sign-ins disabled**, and its PostgreSQL connection URLs
+are required for the real multi-user flow. Configure the Supabase email template
+to include `{{ .Token }}` so attendees receive a code rather than just a magic link.
 
 ```sh
 npm ci
@@ -20,7 +102,7 @@ ALLOW_DEMO_SEED=true npm run db:seed
 npm run dev
 ```
 
-Visit `/organiser` to create an event. Keep that browser's guest session to return
+Visit `/organiser` to create an event. Sign in with your email code to return
 to `/organiser/:id` for its QR/code. Attendees visit `/join/:code` or enter a code
 at `/`. The seeded event code is `HELLO26`. The event name stays in the header;
 Leave event deletes that caller's membership, answers and optional topics.

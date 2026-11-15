@@ -1,7 +1,8 @@
 # Development setup
 
-The current setup, Supabase Anonymous Auth flow, data boundaries, demo path,
-API contract and test commands are in the [root README](../README.md).
+Current email-code accounts, QR check-in, API contracts and setup are in the
+[root README](../README.md). [Task 5A validation](Task5A-Validation.md) records
+what was actually tested and what requires hosted verification.
 
-[Task 1 validation](VALIDATION.md) is a historical report.
-[Task 2 validation](Task2-Validation.md) records current execution and limitations.
+Earlier task validation reports are historical. The original anonymous entry
+flow has been replaced by confirmed email-code accounts.

@@ -10,16 +10,16 @@ export default function Home() {
       <Header />
       <main className="landing">
         <section>
-          <p className="eyebrow">In the same room. Ready for a hello.</p>
+          <p className="eyebrow">Explore Broadly. Connect Deeply.</p>
           <h1>
-            Make room
+            Meet people.
             <br />
-            for someone new.
+            Find possibilities.
           </h1>
           <p className="intro">
-            A small way to say you’re open to chat.
+            Short introductions. Meaningful connections.
             <br />
-            Join your event with a name and a goal.
+            Bring your expertise. Discover what you can build together.
           </p>
         </section>
         <section className="panel ticket">
@@ -48,14 +48,16 @@ export default function Home() {
               />
             </label>
             <ErrorMessage message={error} />
-            <button>Join event</button>
+            <button>Get started</button>
           </form>
           {last && (
             <a className="text-link" href={`/event/${last}`}>
               Return to your event →
             </a>
           )}
-          <p className="quiet">No email. No password. Just you.</p>
+          <p className="quiet">
+            Your invitation, your profile, your next hello.
+          </p>
         </section>
         <a className="text-link" href="/organiser">
           Organising an event? Create your invitation →

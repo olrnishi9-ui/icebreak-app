@@ -346,7 +346,13 @@ export function Conversation({
     </div>
   );
 }
-export function MyPeople({ eventId }: { eventId: string }) {
+export function MyPeople({
+  eventId,
+  initiallyOpen = false,
+}: {
+  eventId: string;
+  initiallyOpen?: boolean;
+}) {
   const [people, setPeople] = useState<
       {
         id: string;
@@ -357,7 +363,7 @@ export function MyPeople({ eventId }: { eventId: string }) {
         contacts: { field: string; value: string }[];
       }[]
     >([]),
-    [open, setOpen] = useState(false),
+    [open, setOpen] = useState(initiallyOpen),
     [error, setError] = useState("");
   async function load() {
     try {

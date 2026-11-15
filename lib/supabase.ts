@@ -6,19 +6,15 @@ export function supabase() {
     key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key)
     throw new Error(
-      "Guest access is not configured. Ask your event organiser to try again later.",
+      "Email sign-in is not configured. Ask your event organiser to try again later.",
     );
   return (client ??= createClient(url, key)); // SDK alone owns access/refresh token persistence.
 }
-export async function guest() {
-  const c = supabase();
-  const { data, error } = await c.auth.getSession();
+export async function requireAccount() {
+  const { data, error } = await supabase().auth.getSession();
   if (error) throw error;
-  if (!data.session) {
-    const { error } = await c.auth.signInAnonymously();
-    if (error)
-      throw new Error("Guest access could not start. Please try again.");
-  }
+  if (!data.session || data.session.user.is_anonymous)
+    throw new Error("Sign in with your email code to continue.");
 }
 export async function api<T>(
   path: string,

@@ -1,7 +1,17 @@
 import type { Answer, Question } from "./open-now";
 export type Topic = { type: string; topic: string; visible: boolean };
 export type Profile = {
-  event: { id: string; name: string; code: string };
+  event: { id: string; name: string; code: string; demo?: boolean };
+  role: string;
+  organization: string;
+  industry: string;
+  introduction: string;
+  photo: string;
+  networkingGoals: string[];
+  interestTags: string[];
+  profileSaved: boolean;
+  checkedInAt: string | null;
+  qrToken: string | null;
   displayName: string;
   goal: string;
   field: string;
@@ -15,7 +25,7 @@ export type Profile = {
   openUntil: string | null;
 };
 export type EventInvite = {
-  event: { id: string; name: string; status: string };
+  event: { id: string; name: string; status: string; demo?: boolean };
   meetingPoints?: import("./connections").MeetingPoint[];
   joinCode: string;
   joinUrl: string;

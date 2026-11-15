@@ -1,11 +1,14 @@
 "use client";
 import { use, useEffect, useState, useCallback } from "react";
-import { api } from "../../../lib/supabase";
+import { api, supabase } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import type { Answer, OpenEntry } from "../../../lib/open-now";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
 import { MyPeople } from "../../components/conversation";
 import { ConnectionFlow } from "../../components/connection-flow";
+import { BottomNav, NavIcon, type Tab } from "../../components/bottom-nav";
+import { PersonalQR } from "../../components/personal-qr";
+import { Avatar } from "../../components/shared";
 import { ProfileEditor } from "../../components/profile-editor";
 export default function EventHome({
   params,
@@ -13,6 +16,14 @@ export default function EventHome({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const [tab, setTab] = useState<Tab>("Home");
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get("tab");
+    if (
+      ["Home", "Discover", "Requests", "Matches", "Profile"].includes(t ?? "")
+    )
+      setTab(t as Tab);
+  }, []);
   const [flow, setFlow] = useState(false);
   const [connectionOffline, setConnectionOffline] = useState(false);
   const [selection, setSelection] = useState<OpenEntry | null>(null);
@@ -28,7 +39,24 @@ export default function EventHome({
   const load = useCallback(async () => {
     try {
       const p = await api<Profile>(`/api/profile?eventId=${id}`);
-      setProfile(p);
+      if (
+        p.profileSaved &&
+        p.step !== "home" &&
+        new URLSearchParams(location.search).get("welcome") === "back"
+      ) {
+        const restored = await api<Profile>("/api/questionnaire", "POST", {
+          eventId: id,
+          answers: p.questions.map(
+            (q) =>
+              p.answers.find((a) => a.questionId === q.id) ?? {
+                questionId: q.id,
+                choice: null,
+                skipped: true,
+              },
+          ),
+        });
+        setProfile(restored);
+      } else setProfile(p);
       localStorage.setItem("icebreak-event", id);
       setError("");
     } catch (e) {
@@ -119,23 +147,7 @@ export default function EventHome({
     open = until > clock;
   return (
     <>
-      <Header name={profile?.event.name}>
-        {profile && (
-          <button
-            className="link-button"
-            disabled={busy || offline || connectionOffline || flow}
-            onClick={() =>
-              void action(async () => {
-                await api(`/api/events/${id}/membership`, "DELETE");
-                localStorage.removeItem("icebreak-event");
-                location.assign("/");
-              })
-            }
-          >
-            Leave event
-          </button>
-        )}
-      </Header>
+      <Header name={profile?.event.name} />
       <main className="room">
         {!profile ? (
           loaded ? (
@@ -155,16 +167,79 @@ export default function EventHome({
             <div className="room-title">
               <p className="eyebrow">{profile.event.name}</p>
               <h1>
-                {home
-                  ? "A little space for a hello."
-                  : `You’re in, ${profile.displayName}.`}
+                {flow
+                  ? "Your introduction"
+                  : home
+                    ? tab === "Home"
+                      ? `Hello, ${profile.displayName.split(" ")[0]}.`
+                      : tab
+                    : `You’re in, ${profile.displayName}.`}
               </h1>
               <p>
-                {home
-                  ? "People here have chosen to be open to chat."
-                  : "Quick setup is optional. Skip everything and head straight in."}
+                {flow
+                  ? "Make space for a real conversation."
+                  : home
+                    ? tab === "Discover"
+                      ? "People here have chosen to be open to chat."
+                      : "Explore Broadly. Connect Deeply."
+                    : "Quick setup is optional. Skip everything and head straight in."}
               </p>
             </div>
+            {home && !questions && !flow && tab === "Home" && (
+              <>
+                <section className="panel !bg-primary !text-white">
+                  <p className="text-[13px]">YOUR EVENT</p>
+                  <h2>{profile.event.name}</h2>
+                  <p>Short introductions, at your pace.</p>
+                  <span className="inline-block rounded-full bg-white/15 px-3 py-2 text-[13px]">
+                    {profile.checkedInAt
+                      ? "Checked in · ready to connect"
+                      : "Check in at the welcome desk"}
+                  </span>
+                </section>
+                <section className="grid grid-cols-3 gap-3">
+                  {(["Discover", "Requests", "Matches"] as Tab[]).map((t) => (
+                    <button
+                      key={t}
+                      className="secondary !rounded-3xl !px-2 !py-5 text-[13px]"
+                      onClick={() => setTab(t)}
+                    >
+                      {t}
+                      <span className="block mt-2" aria-hidden="true">
+                        <NavIcon tab={t} />
+                      </span>
+                    </button>
+                  ))}
+                </section>
+                <section className="panel flex items-center gap-4">
+                  <Avatar name={profile.displayName} photo={profile.photo} />
+                  <div className="flex-1">
+                    <h2>Your personal QR</h2>
+                    <p className="quiet">Ready for arrival and follow-up.</p>
+                    <button
+                      className="link-button"
+                      onClick={() => setTab("Profile")}
+                    >
+                      Show my QR →
+                    </button>
+                  </div>
+                </section>
+                <section className="panel">
+                  <p className="eyebrow">Around the event</p>
+                  <h2>Find your next conversation</h2>
+                  <p className="quiet">
+                    Station suggestions will appear here when available.
+                  </p>
+                </section>
+                <section className="rounded-2xl bg-[#DCEFE7] p-5" role="status">
+                  <h2>You’re up to date</h2>
+                  <p className="quiet">Your event updates will appear here.</p>
+                </section>
+              </>
+            )}
+            {tab === "Profile" && profile.profileSaved && (
+              <PersonalQR profile={profile} />
+            )}
             <ErrorMessage message={error} />
             {offline && (
               <p role="status" className="notice">
@@ -172,7 +247,27 @@ export default function EventHome({
                 date; controls are read-only until we reconnect.
               </p>
             )}
-            {!home || questions ? (
+            {!profile.profileSaved ? (
+              <section className="panel">
+                <ProfileEditor
+                  profile={profile}
+                  busy={busy}
+                  save={async (body) => {
+                    setBusy(true);
+                    try {
+                      setProfile(
+                        await api<Profile>("/api/profile", "PUT", {
+                          ...body,
+                          eventId: id,
+                        }),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                />
+              </section>
+            ) : !home || questions ? (
               <section className="panel">
                 <h2>A few easy conversation starters</h2>
                 <p className="quiet">
@@ -180,41 +275,43 @@ export default function EventHome({
                   board. Skip means neither, both, or simply “I’d rather not.”
                   Your other answers stay private.
                 </p>
-                {profile.questions.map((q) => {
-                  const answer = profile.answers.find(
-                    (a) => a.questionId === q.id,
-                  );
-                  return (
-                    <fieldset key={q.id}>
-                      <legend>{q.prompt}</legend>
-                      <div className="choices">
-                        {q.options.map((option, i) => (
+                {profile.questions
+                  .filter((q) => q.kind === "preference")
+                  .map((q) => {
+                    const answer = profile.answers.find(
+                      (a) => a.questionId === q.id,
+                    );
+                    return (
+                      <fieldset key={q.id}>
+                        <legend>{q.prompt}</legend>
+                        <div className="choices">
+                          {q.options.map((option, i) => (
+                            <button
+                              type="button"
+                              className="option"
+                              aria-pressed={
+                                answer?.choice === i && !answer.skipped
+                              }
+                              key={option}
+                              disabled={busy || offline || connectionOffline}
+                              onClick={() => void saveAnswer(q.id, i)}
+                            >
+                              {option}
+                            </button>
+                          ))}
                           <button
                             type="button"
-                            className="option"
-                            aria-pressed={
-                              answer?.choice === i && !answer.skipped
-                            }
-                            key={option}
+                            className="option skip"
+                            aria-pressed={answer?.skipped === true}
                             disabled={busy || offline || connectionOffline}
-                            onClick={() => void saveAnswer(q.id, i)}
+                            onClick={() => void saveAnswer(q.id, null)}
                           >
-                            {option}
+                            Skip
                           </button>
-                        ))}
-                        <button
-                          type="button"
-                          className="option skip"
-                          aria-pressed={answer?.skipped === true}
-                          disabled={busy || offline || connectionOffline}
-                          onClick={() => void saveAnswer(q.id, null)}
-                        >
-                          Skip
-                        </button>
-                      </div>
-                    </fieldset>
-                  );
-                })}
+                        </div>
+                      </fieldset>
+                    );
+                  })}
                 <div className="actions">
                   <button
                     disabled={busy || offline || connectionOffline}
@@ -233,18 +330,33 @@ export default function EventHome({
               </section>
             ) : (
               <>
-                <ConnectionFlow
-                  eventId={id}
-                  onFlow={setFlow}
-                  parentOffline={offline}
-                  onOffline={setConnectionOffline}
-                  selection={selection}
-                  clearSelection={() => setSelection(null)}
-                />
-                <MyPeople eventId={id} />
+                <div
+                  hidden={
+                    tab !== "Requests" &&
+                    tab !== "Matches" &&
+                    !flow &&
+                    !selection
+                  }
+                >
+                  <ConnectionFlow
+                    mode={tab === "Matches" ? "matches" : "requests"}
+                    eventId={id}
+                    onFlow={setFlow}
+                    parentOffline={offline}
+                    onOffline={setConnectionOffline}
+                    selection={selection}
+                    clearSelection={() => setSelection(null)}
+                  />
+                </div>
+                <div hidden={tab !== "Matches"}>
+                  <MyPeople eventId={id} initiallyOpen />
+                </div>
                 {!flow && (
                   <>
-                    <section className="availability panel">
+                    <section
+                      hidden={tab !== "Discover"}
+                      className="availability panel"
+                    >
                       <div>
                         <h2>Your invitation to chat · open again when ready</h2>
                         <p>
@@ -303,7 +415,7 @@ export default function EventHome({
                         )}
                       </div>
                     </section>
-                    <section>
+                    <section hidden={tab !== "Discover"}>
                       <div className="section-title">
                         <h2>Open to chat</h2>
                         <button
@@ -347,7 +459,8 @@ export default function EventHome({
                         <ul className="people">
                           {list.map((p, i) => (
                             <li className="person" key={i}>
-                              <h3>{p.displayName}</h3>
+                              <Avatar name={p.displayName} />
+                              <h3 className="mt-3">{p.displayName}</h3>
                               <p>{p.goalLine}</p>
                               {p.chip && <span className="chip">{p.chip}</span>}
                               <div className="actions">
@@ -403,7 +516,7 @@ export default function EventHome({
               </>
             )}
             {!flow && (
-              <section className="panel">
+              <section hidden={tab !== "Profile"} className="panel">
                 <div className="section-title">
                   <div>
                     <p className="eyebrow">Make it yours · optional</p>
@@ -436,15 +549,52 @@ export default function EventHome({
                   />
                 ) : (
                   <p className="quiet">
-                    Add a fun fact, an interest, or something you’d like to
-                    learn. You can leave these empty forever.
+                    Your expertise, interests and goals. Update them whenever
+                    you like.
                   </p>
                 )}
+                <button
+                  className="secondary"
+                  disabled={busy || offline || connectionOffline || flow}
+                  onClick={() =>
+                    void action(async () => {
+                      const { error } = await supabase().auth.signOut();
+                      if (error) throw error;
+                      location.assign(`/join/${profile.event.code}`);
+                    })
+                  }
+                >
+                  Sign out
+                </button>
+                <button
+                  className="link-button"
+                  disabled={busy || offline || connectionOffline || flow}
+                  onClick={() =>
+                    void action(async () => {
+                      await api(`/api/events/${id}/membership`, "DELETE");
+                      localStorage.removeItem("icebreak-event");
+                      location.assign("/");
+                    })
+                  }
+                >
+                  Leave event
+                </button>
               </section>
             )}
           </>
         )}
       </main>
+      {profile && (
+        <BottomNav
+          tab={tab}
+          onChange={(t) => {
+            setTab(t);
+            setQuestions(false);
+            history.replaceState(null, "", `?tab=${t}`);
+            window.scrollTo(0, 0);
+          }}
+        />
+      )}
     </>
   );
 }

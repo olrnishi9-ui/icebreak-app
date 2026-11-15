@@ -73,6 +73,7 @@ export async function fixture() {
         .id,
     );
   }
+  await db.query("UPDATE event_participants SET checked_in_at=now() WHERE event_id=$1",[event]);
   const qs = await new EntryService(db).questions(event);
   for (const n of [1, 2])
     await call(
@@ -142,6 +143,7 @@ export async function fixture() {
   return {
     pg,
     db,
+    invite,
     call,
     event,
     members,

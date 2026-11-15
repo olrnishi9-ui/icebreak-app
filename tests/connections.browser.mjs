@@ -12,7 +12,7 @@ test("Task 3 browser: two contexts, restore, identical meeting, arrivals, retry/
   const f = await fixture();
   t.after(() => f.pg.close());
   await f.db.query(
-    "UPDATE event_participants SET setup_complete=true WHERE event_id=$1",
+    "UPDATE event_participants SET setup_complete=true,profile_saved=true WHERE event_id=$1",
     [f.event],
   );
   const browser = await chromium.launch({
@@ -31,7 +31,7 @@ test("Task 3 browser: two contexts, restore, identical meeting, arrivals, retry/
       ({ id }) => {
         const token = `${btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${btoa(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + 3600 }))}.fixture`;
         localStorage.setItem(
-          "sb-task2-test-auth-token",
+          "sb-meetmates-test-auth-token",
           JSON.stringify({
             access_token: token,
             refresh_token: "fixture",
@@ -42,7 +42,7 @@ test("Task 3 browser: two contexts, restore, identical meeting, arrivals, retry/
               id,
               aud: "authenticated",
               role: "authenticated",
-              is_anonymous: true,
+              is_anonymous: false,
               app_metadata: {},
               user_metadata: {},
               created_at: new Date().toISOString(),
@@ -94,7 +94,7 @@ test("Task 3 browser: two contexts, restore, identical meeting, arrivals, retry/
     );
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${base}/event/${f.event}`);
+    await page.goto(`${base}/event/${f.event}?tab=Requests`);
     await waitVisible(page, "Already said hello?");
     return { context, page };
   }
@@ -107,8 +107,9 @@ test("Task 3 browser: two contexts, restore, identical meeting, arrivals, retry/
     await A.close();
     A = await a.context.newPage();
     A.on("pageerror", (e) => errors.push(e.message));
-    await A.goto(`${base}/event/${f.event}`);
+    await A.goto(`${base}/event/${f.event}?tab=Requests`);
   }
+  await A.getByRole("navigation").getByRole("button",{name:"Discover",exact:true}).click();
   await A.locator(".person")
     .filter({ has: A.getByRole("heading", { name: "Person 2", exact: true }) })
     .getByRole("button", { name: "Invite to chat" })
