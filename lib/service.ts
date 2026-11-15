@@ -66,6 +66,7 @@ type Event = {
   ends_at: string | Date | null;
 };
 type Member = {
+  demo_email_label: string;
   role: string;
   organization: string;
   industry: string;
@@ -161,7 +162,7 @@ export class EntryService {
   async member(authId: string, eventId: string, db = this.db): Promise<Member> {
     uuid(eventId);
     const [p] = await db.query<Member>(
-      `SELECT p.* FROM event_participants p JOIN users u ON u.id=p.user_id WHERE p.event_id=$1::uuid AND u.auth_id=$2::uuid`,
+      `SELECT p.*,u.demo_email_label FROM event_participants p JOIN users u ON u.id=p.user_id WHERE p.event_id=$1::uuid AND u.auth_id=$2::uuid`,
       [eventId, authId],
     );
     if (!p) throw new HttpError(404, "You have not joined this event.");
@@ -352,6 +353,9 @@ export class EntryService {
     );
     return {
       event: { id: e.id, name: e.name, code: e.event_code, demo: e.is_demo },
+      ...(e.is_demo && e.event_code === "DEMO26"
+        ? { demoEmailLabel: p.demo_email_label }
+        : {}),
       role: p.role,
       organization: p.organization,
       industry: p.industry,

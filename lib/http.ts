@@ -1,11 +1,13 @@
+import { ShowService } from "./show-mode";
 import { DiscoveryService } from "./discovery-service";
 import { ArcService } from "./arc-service";
 import { ConnectionService } from "./connection-service";
 import { createClient } from "@supabase/supabase-js";
 import { EntryService, HttpError, code, uuid } from "./service";
 import type { DB } from "./service";
-export type Verify = (token: string) => Promise<string | null>;
-export async function verify(token: string) {
+export type Identity = { id: string; anonymous: boolean };
+export type Verify = (token: string) => Promise<string | Identity | null>;
+export async function verifySession(token: string): Promise<Identity | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL,
     key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key)
@@ -14,13 +16,20 @@ export async function verify(token: string) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await c.auth.getUser(token);
-  return error || data.user?.is_anonymous || !data.user?.email_confirmed_at
+  return error ||
+    !data.user ||
+    (!data.user.is_anonymous && !data.user.email_confirmed_at)
     ? null
-    : (data.user?.id ?? null);
+    : { id: data.user.id, anonymous: !!data.user.is_anonymous };
+}
+// Organiser/email-account verification retains its existing contract.
+export async function verify(token: string) {
+  const identity = await verifySession(token);
+  return identity && !identity.anonymous ? identity.id : null;
 }
 export function handler(
   db: DB,
-  verifyIdentity: Verify = verify,
+  verifyIdentity: Verify = verifySession,
   now: () => number = Date.now,
 ) {
   return async (request: Request, path: string[]) => {
@@ -45,7 +54,9 @@ export function handler(
       const token = request.headers
         .get("authorization")
         ?.match(/^Bearer (\S+)$/)?.[1];
-      const identity = token ? await verifyIdentity(token) : null;
+      const verified = token ? await verifyIdentity(token) : null;
+      const identity = typeof verified === "string" ? verified : verified?.id;
+      const anonymous = typeof verified === "object" && verified?.anonymous;
       if (!identity)
         throw new HttpError(
           401,
@@ -63,6 +74,67 @@ export function handler(
         } catch {
           throw new HttpError(400, "Send a valid form.");
         }
+      }
+      if (path[0] === "show") {
+        if (!anonymous)
+          throw new HttpError(
+            403,
+            "Use the attendee show sign-in to continue.",
+          );
+        const show = new ShowService(db, now);
+        if (path.length === 2 && path[1] === "entry" && method === "POST")
+          return respond(await show.prepare(identity, body));
+        if (path.length === 2 && path[1] === "event" && method === "GET")
+          return respond(await show.event());
+        if (path.length === 2 && path[1] === "join" && method === "POST")
+          return respond(await show.join(identity, body));
+        throw new HttpError(404, "Route not found.");
+      }
+      if (anonymous) {
+        // Permit the real participant APIs only in DEMO26. Organiser and
+        // account-registration operations remain email-account-only.
+        const participantRoute = [
+          "profile",
+          "questionnaire",
+          "discover",
+          "saved",
+          "notifications",
+          "sessions",
+          "connections",
+          "people",
+          "feedback",
+          "blocks",
+          "reports",
+          "qr",
+        ].includes(path[0]);
+        const stationRoute =
+          path[0] === "stations" &&
+          ((method === "GET" &&
+            path.length === 1 &&
+            url.searchParams.get("manage") !== "true") ||
+            (method === "POST" && path.length === 3 && path[2] === "dismiss"));
+        const eventRoute =
+          path[0] === "events" &&
+          path.length === 3 &&
+          ["availability", "open", "membership"].includes(path[2]);
+        if (!participantRoute && !stationRoute && !eventRoute)
+          throw new HttpError(
+            403,
+            "Use organiser email sign-in for this action.",
+          );
+        const e = await s.event(
+          uuid(
+            eventRoute
+              ? path[1]
+              : (url.searchParams.get("eventId") ?? body.eventId),
+          ),
+        );
+        if (!e.is_demo || e.event_code !== "DEMO26")
+          throw new HttpError(
+            403,
+            "Show sessions can only access MeetMates Demo.",
+          );
+        await s.member(identity, e.id);
       }
       if (path.join("/") === "events" && method === "POST")
         return respond(await s.create(identity, body, url.origin), 201);

@@ -3,7 +3,7 @@ import { use, useEffect, useState } from "react";
 import { api, supabase } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
-import { EmailLogin } from "../../components/email-login";
+import { AttendeeLogin } from "../../components/attendee-login";
 import { ProfileEditor } from "../../components/profile-editor";
 export default function Join({
   params,
@@ -46,12 +46,24 @@ export default function Join({
   }
   useEffect(() => {
     (async () => {
-      const r = await fetch(`/api/events/${encodeURIComponent(code)}`);
-      const e = await r.json();
-      if (!r.ok || !e.active) throw Error(e.error || "This event has ended.");
-      setEvent(e);
-      const { data } = await supabase().auth.getSession();
-      if (data.session && !data.session.user.is_anonymous) await resume();
+      const { data, error } = await supabase().auth.getSession();
+      if (error) throw error;
+      if (data.session?.user.is_anonymous) {
+        if (code.toUpperCase() !== "DEMO26") {
+          location.replace("/join");
+          return;
+        }
+        const p = await api<Profile>("/api/show/join", "POST", { code });
+        setEvent(p.event);
+        setProfile(p);
+        setSigned(true);
+      } else if (data.session) {
+        const r = await fetch(`/api/events/${encodeURIComponent(code)}`);
+        const e = await r.json();
+        if (!r.ok || !e.active) throw Error(e.error || "This event has ended.");
+        setEvent(e);
+        await resume();
+      }
     })()
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -78,10 +90,16 @@ export default function Join({
               save={async (body) => {
                 setBusy(true);
                 try {
-                  const p = await api<Profile>("/api/account/profile", "POST", {
-                    ...body,
-                    code,
-                  });
+                  const p =
+                    profile.demoEmailLabel !== undefined
+                      ? await api<Profile>("/api/profile", "PUT", {
+                          ...body,
+                          eventId: profile.event.id,
+                        })
+                      : await api<Profile>("/api/account/profile", "POST", {
+                          ...body,
+                          code,
+                        });
                   localStorage.setItem("icebreak-event", p.event.id);
                   location.assign(`/event/${p.event.id}`);
                 } finally {
@@ -91,7 +109,7 @@ export default function Join({
             />
           </section>
         ) : (
-          <EmailLogin onSuccess={resume} />
+          <AttendeeLogin />
         )}
       </main>
     </>

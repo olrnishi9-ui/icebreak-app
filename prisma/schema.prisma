@@ -67,6 +67,7 @@ model users {
   id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   auth_id          String?              @unique @db.Uuid
   display_name     String               @db.VarChar(80)
+  demo_email_label String @default("") @db.VarChar(254)
   bio              String?
   is_guest         Boolean              @default(false)
   created_at       DateTime             @default(now()) @db.Timestamptz(6)
