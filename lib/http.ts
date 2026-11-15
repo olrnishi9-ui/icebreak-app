@@ -1,3 +1,4 @@
+import { DiscoveryService } from "./discovery-service";
 import { ArcService } from "./arc-service";
 import { ConnectionService } from "./connection-service";
 import { createClient } from "@supabase/supabase-js";
@@ -87,6 +88,66 @@ export function handler(
             ),
           );
       }
+      const discovery = new DiscoveryService(db, now);
+      if (path[0] === "discover" && path.length === 1 && method === "GET")
+        return respond(
+          await discovery.list(
+            identity,
+            eventId(),
+            url.searchParams.get("tab") ?? "for-you",
+            url.searchParams.get("search"),
+          ),
+        );
+      if (
+        path[0] === "saved" &&
+        path.length === 2 &&
+        ["PUT", "DELETE"].includes(method)
+      )
+        return respond(
+          await discovery.save(identity, eventId(), path[1], method === "PUT"),
+        );
+      if (path[0] === "notifications") {
+        if (path.length === 1 && method === "GET")
+          return respond(await discovery.notification(identity, eventId()));
+        if (path.length === 2 && method === "DELETE")
+          return respond(
+            await discovery.dismissNotification(identity, eventId(), path[1]),
+          );
+      }
+      if (path[0] === "stations") {
+        if (path.length === 1 && method === "GET")
+          return respond(
+            await discovery.stations(
+              identity,
+              eventId(),
+              url.searchParams.get("manage") === "true",
+            ),
+          );
+        if (path.length === 1 && method === "POST")
+          return respond(
+            await discovery.stationWrite(identity, eventId(), null, body),
+            201,
+          );
+        if (path.length === 2 && method === "PUT")
+          return respond(
+            await discovery.stationWrite(identity, eventId(), path[1], body),
+          );
+        if (path.length === 2 && method === "DELETE")
+          return respond(
+            await discovery.stationWrite(identity, eventId(), path[1], null),
+          );
+        if (path.length === 3 && path[2] === "dismiss" && method === "POST")
+          return respond(
+            await discovery.dismissStation(identity, eventId(), path[1]),
+          );
+      }
+      if (
+        path[0] === "sessions" &&
+        path.length === 3 &&
+        path[2] === "profile" &&
+        method === "GET"
+      )
+        return respond(await discovery.matched(identity, eventId(), path[1]));
       const connect = new ConnectionService(db, now);
       const arc = new ArcService(db, now);
       if (path[0] === "sessions" && path.length === 3 && path[2] === "arc") {

@@ -43,6 +43,8 @@ type Choice = {
   done: boolean;
 };
 export type ArcView = {
+  extension: { canPropose: boolean; proposal: "yours" | "partner" | null };
+  duration: number;
   script: Arc;
   position: number;
   skipped: number[];
@@ -125,7 +127,28 @@ export class ArcService {
           : next === "close"
             ? 0.8
             : 0;
+    const canPropose =
+      !closing &&
+      !!s.started_at &&
+      s.duration < 20 &&
+      elapsed >= (s.duration - 1) * 60000 &&
+      elapsed < s.duration * 60000;
+    const [proposal] = canPropose
+      ? await this.db.query<{ proposer_id: string }>(
+          "SELECT proposer_id FROM session_extensions WHERE session_id=$1::uuid AND base_duration=$2",
+          [id, s.duration],
+        )
+      : [];
     return {
+      duration: s.duration,
+      extension: {
+        canPropose,
+        proposal: proposal
+          ? proposal.proposer_id === p.user_id
+            ? "yours"
+            : "partner"
+          : null,
+      },
       script: s.arc_script,
       position,
       skipped: closing ? [] : s.arc_skipped,
@@ -173,7 +196,15 @@ export class ArcService {
     const action = body.action;
     if (
       typeof action !== "string" ||
-      !["advance", "skip", "wrap-up", "keep-talking", "done"].includes(action)
+      ![
+        "advance",
+        "skip",
+        "wrap-up",
+        "keep-talking",
+        "done",
+        "extend",
+        "extension-later",
+      ].includes(action)
     )
       return fail("Choose a card action.");
     if (
@@ -182,10 +213,38 @@ export class ArcService {
     )
       return fail("Send the current card position.");
     await this.db.transaction(async (db) => {
-      await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [event]);
+      await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [
+        event,
+      ]);
       const { s, p } = await this.context(auth, event, id, db);
       if (!s.started_at)
         return fail("Arrive before starting the conversation.");
+      if (action === "extend" || action === "extension-later") {
+        const elapsed = this.now() - new Date(s.started_at).getTime();
+        if (
+          (body.duration !== undefined && body.duration !== s.duration) ||
+          s.closed_at ||
+          s.duration >= 20 ||
+          elapsed < (s.duration - 1) * 60000 ||
+          elapsed >= s.duration * 60000
+        )
+          throw new HttpError(
+            409,
+            "Continue at your pace, or save a follow-up.",
+          );
+        // Later is intentionally a no-op: it cannot reveal a negative decision.
+        if (action === "extension-later") return;
+        const a = p.user_id === s.user_a_id;
+        await db.query(
+          `INSERT INTO session_extensions(session_id,base_duration,proposer_id,a_agrees,b_agrees) VALUES($1::uuid,$2,$3::uuid,$4,$5) ON CONFLICT(session_id,base_duration) DO UPDATE SET ${a ? "a_agrees" : "b_agrees"}=true`,
+          [id, s.duration, p.user_id, a, !a],
+        );
+        await db.query(
+          "UPDATE sessions SET duration=duration+5 WHERE id=$1::uuid AND duration=$2 AND EXISTS(SELECT 1 FROM session_extensions WHERE session_id=$1::uuid AND base_duration=$2 AND a_agrees AND b_agrees)",
+          [id, s.duration],
+        );
+        return;
+      }
       if (action === "done") {
         if (!s.closed_at) return fail("Wrap up first.");
         const choice = body.choice ?? null;
@@ -311,10 +370,23 @@ export class ArcService {
       (values[2] !== null && typeof values[2] !== "boolean")
     )
       return fail("Check the feedback options.");
-    if (values.some((v) => v !== null))
+    const reasons = body.reasons ?? [],
+      note = body.private_note ?? "";
+    if (
+      !Array.isArray(reasons) ||
+      reasons.length > 4 ||
+      reasons.some(
+        (r) =>
+          !["collaboration", "learning", "investment", "advice"].includes(r),
+      ) ||
+      typeof note !== "string" ||
+      note.length > 500
+    )
+      return fail("Check the private feedback.");
+    if (values.some((v) => v !== null) || reasons.length || note.trim())
       await this.db.query(
-        "INSERT INTO feedback(interaction_id,user_id,conversation_ease,perceived_value,willingness_to_reconnect) VALUES($1::uuid,$2::uuid,$3,$4,$5) ON CONFLICT(interaction_id,user_id) DO NOTHING",
-        [id, p.user_id, ...values],
+        "INSERT INTO feedback(interaction_id,user_id,conversation_ease,perceived_value,willingness_to_reconnect,reasons,private_note) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::text[],$7) ON CONFLICT(interaction_id,user_id) DO NOTHING",
+        [id, p.user_id, ...values, [...new Set(reasons)], note.trim()],
       );
     return { ok: true };
   }

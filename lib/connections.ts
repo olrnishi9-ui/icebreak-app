@@ -42,6 +42,12 @@ export type MeetSession = {
   partnerOnTheirWay: boolean;
 };
 export type ConnectionState = {
+  matches?: {
+    id: string;
+    displayName: string;
+    createdAt: string;
+    meetingPoint: MeetingPoint | null;
+  }[];
   shortCode: string;
   incoming: Connection[];
   outgoing: Connection[];
@@ -54,7 +60,11 @@ export function connectionScreen(
 ) {
   if (state.session)
     return state.session.state === "started" ? "started" : "meet";
-  if (state.outgoing.some((r) => !waitingId || r.id === waitingId))
+  if (
+    state.outgoing.some(
+      (r) => r.status === "pending" && (!waitingId || r.id === waitingId),
+    )
+  )
     return "waiting";
   return "board";
 }

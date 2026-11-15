@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/supabase";
-import { ARC_COPY } from "../../lib/arc";
+import { ARC_COPY, promptCategory } from "../../lib/arc";
 import type { ArcView } from "../../lib/arc-service";
 import type { MeetSession } from "../../lib/connections";
 import { localArcAction } from "../../lib/arc-client";
@@ -10,6 +10,7 @@ export function PrepCard({ session }: { session: MeetSession }) {
     c = v.script.cards[0];
   return (
     <article className="arc-card">
+      <p className="eyebrow">Icebreaker</p>
       <h3>A moment to prepare</h3>
       <p>
         {session.duration} minutes · {c.framing}
@@ -41,13 +42,23 @@ export function Conversation({
     [optedIn, setOptedIn] = useState(false),
     [note, setNote] = useState(session.arc.note),
     [feedback, setFeedback] = useState(false),
+    [reasons, setReasons] = useState<string[]>([]),
+    [privateNote, setPrivateNote] = useState(""),
+    [tick, setTick] = useState(Date.now()),
+    [declinedDuration, setDeclinedDuration] = useState<number | null>(null),
     [values, setValues] = useState<Record<string, number | boolean>>({});
+  useEffect(() => {
+    const t = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const receivedAt = useRef(Date.now());
   const current = useRef(view),
     queue = useRef<Record<string, unknown>[]>([]),
     syncing = useRef(false),
     signal = useRef("");
   const path = `/api/sessions/${session.id}/arc`;
   function receive(v: ArcView) {
+    receivedAt.current = Date.now();
     current.current = v;
     setView(v);
   }
@@ -118,7 +129,30 @@ export function Conversation({
       setError((e as Error).message);
     }
   }
+  const elapsed = view.elapsed + Math.max(0, tick - receivedAt.current);
+  const remaining = Math.max(0, view.duration * 60000 - elapsed);
   const card = view.script.cards[view.position];
+  async function extension(action: string) {
+    try {
+      receive(
+        await api<ArcView>(path, "POST", {
+          eventId,
+          action,
+          duration: view.duration,
+        }),
+      );
+      if (action === "extension-later") setDeclinedDuration(view.duration);
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function savePerson() {
+    const p = await api<{ person: { participantId: string } }>(
+      `/api/sessions/${session.id}/profile?eventId=${eventId}`,
+    );
+    await api(`/api/saved/${p.person.participantId}`, "PUT", { eventId });
+  }
   const about =
     card.kind === "deepen" && card.framing === "Ask me about"
       ? view.side === "a"
@@ -154,9 +188,63 @@ export function Conversation({
               Another card is available whenever you’re ready.
             </p>
           )}
-          <p className="quiet">
-            <time>{Math.floor(view.elapsed / 60000)} min together</time>
-          </p>
+          <div className="rounded-2xl bg-mint p-4">
+            <p className="!mt-0 text-[15px]">
+              <time>
+                {Math.floor(elapsed / 60000)} min together ·{" "}
+                {remaining > 0
+                  ? `${Math.ceil(remaining / 60000)} min remaining`
+                  : "Take your time wrapping up"}
+              </time>
+            </p>
+            <progress
+              className="w-full h-2 accent-primary [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-bar]:bg-[#D4E6DC]"
+              max={view.duration * 60000}
+              value={Math.min(elapsed, view.duration * 60000)}
+              aria-label="Introduction time"
+            />
+            <p className="quiet text-[13px] !mb-0">
+              {view.duration >= 20
+                ? "Save a follow-up to continue later."
+                : "The timer is a guide. Your conversation stays open."}
+            </p>
+            {view.extension?.canPropose &&
+              remaining > 0 &&
+              declinedDuration !== view.duration && (
+                <div className="mt-3">
+                  {view.extension.proposal === "yours" ? (
+                    <p role="status">
+                      You’ve offered five more minutes. Continue at your pace.
+                    </p>
+                  ) : view.extension.proposal === "partner" ? (
+                    <>
+                      <p>Would you both like five more minutes?</p>
+                      <button
+                        disabled={offline}
+                        onClick={() => void extension("extend")}
+                      >
+                        Agree · Extend +5
+                      </button>
+                      <button
+                        className="link-button"
+                        disabled={offline}
+                        onClick={() => void extension("extension-later")}
+                      >
+                        Finish as planned
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="secondary"
+                      disabled={offline}
+                      onClick={() => void extension("extend")}
+                    >
+                      Extend +5
+                    </button>
+                  )}
+                </div>
+              )}
+          </div>
           {!down && view.script.notice && <p>{view.script.notice}</p>}
           {down ? (
             <h2>Keep talking. Phones face-down.</h2>
@@ -164,6 +252,7 @@ export function Conversation({
             <PrepCard session={session} />
           ) : (
             <article className="arc-card" aria-live="polite">
+              <p className="eyebrow">{promptCategory(card)}</p>
               <h2>{framing}</h2>
               {facts.map((f, i) => (
                 <p key={i}>{f}</p>
@@ -217,8 +306,8 @@ export function Conversation({
                       <div key={key}>
                         <p>
                           {key === "conversation_ease"
-                            ? "Ease of using the conversation format"
-                            : "Value of the conversation format"}
+                            ? "How easy did the conversation feel?"
+                            : "Was the conversation worthwhile?"}
                         </p>
                         {[
                           "Very low",
@@ -253,7 +342,7 @@ export function Conversation({
                       </div>
                     ),
                   )}
-                  <p>Would you use this conversation format to reconnect?</p>
+                  <p>Do you want to follow up?</p>
                   {[true, false].map((b) => (
                     <button
                       key={String(b)}
@@ -266,6 +355,39 @@ export function Conversation({
                       {b ? "Yes" : "No"}
                     </button>
                   ))}
+                  <p>What would you like to explore? · optional</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["collaboration", "learning", "investment", "advice"].map(
+                      (r) => (
+                        <button
+                          key={r}
+                          className="option capitalize"
+                          aria-pressed={reasons.includes(r)}
+                          onClick={() =>
+                            setReasons(
+                              reasons.includes(r)
+                                ? reasons.filter((v) => v !== r)
+                                : [...reasons, r],
+                            )
+                          }
+                        >
+                          {r}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                  <label>
+                    Private feedback note · optional
+                    <textarea
+                      maxLength={500}
+                      value={privateNote}
+                      onChange={(e) => setPrivateNote(e.target.value)}
+                    />
+                  </label>
+                  <p className="quiet">
+                    This feedback is private and write-only. It is never shown
+                    to your partner.
+                  </p>
                   <div className="actions">
                     <button
                       onClick={async () => {
@@ -274,6 +396,8 @@ export function Conversation({
                             eventId,
                             sessionId: session.id,
                             ...values,
+                            reasons,
+                            private_note: privateNote,
                           });
                           setFeedback(false);
                         } catch (e) {
@@ -292,7 +416,27 @@ export function Conversation({
                   </div>
                 </fieldset>
               )}
-              <button onClick={onFinish}>Back to the room · stay paused</button>
+              <div className="actions">
+                <button
+                  onClick={async () => {
+                    try {
+                      await savePerson();
+                      onFinish();
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  }}
+                >
+                  Save and Follow Up
+                </button>
+                <button className="secondary" onClick={onFinish}>
+                  Meet Someone New
+                </button>
+              </div>
+              <p className="quiet">
+                Your availability stays paused. Open to chat again when you’re
+                ready.
+              </p>
             </>
           ) : (
             <>
@@ -331,7 +475,24 @@ export function Conversation({
                 />
               </label>
               <div className="actions">
-                <button onClick={() => void done()}>Done</button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await savePerson();
+                      await done();
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  }}
+                >
+                  Save and Follow Up
+                </button>
+                <button className="secondary" onClick={() => void done()}>
+                  Meet Someone New
+                </button>
+                <button className="link-button" onClick={() => void done()}>
+                  Done
+                </button>
                 <button
                   className="secondary"
                   onClick={() => act("keep-talking")}

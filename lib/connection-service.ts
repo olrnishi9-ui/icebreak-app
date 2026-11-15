@@ -94,7 +94,17 @@ export class ConnectionService {
     const live =
       sessions.find((s) => !s.closed_at) ??
       (sessions[0]?.started_at ? sessions[0] : undefined);
+    const matches = await this.db.query<{
+      id: string;
+      displayName: string;
+      createdAt: string;
+      meetingPoint: MeetingPoint | null;
+    }>(
+      `SELECT s.id,p.display_name AS "displayName",s.created_at AS "createdAt",s.meeting_point AS "meetingPoint" FROM sessions s JOIN event_participants p ON p.event_id=s.event_id AND p.user_id=CASE WHEN s.user_a_id=$2::uuid THEN s.user_b_id ELSE s.user_a_id END WHERE s.event_id=$1::uuid AND $2::uuid IN(s.user_a_id,s.user_b_id) ORDER BY s.created_at DESC`,
+      [event, p.user_id],
+    );
     return {
+      matches: matches.map((m) => ({ ...m, createdAt: iso(m.createdAt) })),
       shortCode: own.short_code,
       incoming: live
         ? []
@@ -107,7 +117,7 @@ export class ConnectionService {
         !live && sessions[0]?.closed_at
           ? {
               id: sessions[0].id,
-              message: "Plans changed. You’re open to chat again.",
+              message: "Plans changed. Open to chat again when you’re ready.",
             }
           : null,
     };
@@ -148,9 +158,8 @@ export class ConnectionService {
     byCode = false,
   ) {
     // Code entry defaults to a five-minute time box; board entry requires a choice.
-    const duration = body.duration ?? (byCode ? 5 : undefined);
-    if (duration !== 5 && duration !== 10)
-      return fail("Choose 5 or 10 minutes.");
+    const duration = body.duration === undefined ? 5 : body.duration;
+    if (duration !== 5) return fail("Introductions start at 5 minutes.");
     const entered = byCode
       ? text(body.code, "short code", 8).toUpperCase()
       : null;
@@ -383,14 +392,8 @@ export class ConnectionService {
           [event, id, this.time()],
         );
         await db.query(
-          `UPDATE event_participants SET availability_status='open',available_until=$4::timestamptz,opened_at=$5::timestamptz WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)`,
-          [
-            event,
-            s.user_a_id,
-            s.user_b_id,
-            new Date(this.now() + 900000).toISOString(),
-            this.time(),
-          ],
+          "UPDATE event_participants SET availability_status='unavailable',available_until=null WHERE event_id=$1::uuid AND user_id IN($2::uuid,$3::uuid)",
+          [event, s.user_a_id, s.user_b_id],
         );
       } else if (action === "start") {
         if (!(a ? s.arrived_a : s.arrived_b))

@@ -431,3 +431,36 @@ Keep talking restores the prior card unless either participant has finalized Don
 or either is already in another live session.
 
 Validation and honest environment limitations: `docs/Task4-Validation.md`.
+
+### Task 5B API additions
+
+All routes require the existing email account Bearer token and event membership.
+`eventId` is a UUID query parameter for GET/DELETE and a body field for writes.
+Ended events are rejected. Responses use fixed public projections; raw answers,
+contacts, private feedback, ranking keys and recipient decisions are excluded.
+
+| Route | Contract |
+| --- | --- |
+| `GET /api/discover?eventId=…&tab=for-you\|all\|saved&search=…` | Checked-in people; For You also requires live availability and no active session. All supports case-insensitive name/org search (160 chars). Saved is private to the caller. |
+| `PUT /api/saved/:participantId` / `DELETE /api/saved/:participantId?eventId=…` | Idempotent private bookmark; same-event checked-in target required. |
+| `GET /api/sessions/:id/profile?eventId=…` | Two session members only: full public profile, verbatim evidence/topics, confirmation/start time and meeting-point snapshot. |
+| `GET /api/connections?eventId=…` | Received pending requests, private Sent history (`pending`, `accepted`, `expired`), accepted introductions with place/time, and current session. Withdrawal uses existing PATCH `action: "cancel"`. Later never changes the sender projection before natural expiry. |
+| `POST /api/connections` and `/code` | Omitted duration defaults to 5; explicit duration must be 5. Existing legacy ten-minute rows remain valid. |
+| `POST /api/sessions/:id/arc` | Adds `action: "extend"` or `"extension-later"`; client supplies current `duration` as a stale-action guard. Proposal window is `[duration − 1 minute, duration)`, only in a started, unclosed session below 20 minutes. Proposer consents; the partner's explicit consent adds five minutes atomically. Later is a no-op and an unanswered proposal disappears at the natural end. No clock action closes the session. |
+| `POST /api/feedback` | Existing nullable training labels plus optional `reasons` (subset of collaboration/learning/investment/advice) and `private_note` (500 chars). One write after closing/done; no feedback read endpoint. Private remembered facts remain the separate existing notes feature. |
+| `GET /api/stations?eventId=…` | Checked-in attendees receive at most ten undismissed stations with exact profile-field/tag evidence. No booking/capacity fields. |
+| `GET /api/stations?eventId=…&manage=true` | Organiser's station list. |
+| `POST /api/stations` / `PUT /api/stations/:id` / `DELETE /api/stations/:id?eventId=…` | Organiser only. Name (1–80), description (0–500), tags (1–20, each 1–200), locationNote (0–240). |
+| `POST /api/stations/:id/dismiss` | Persisted, event-scoped attendee dismissal. |
+| `GET /api/notifications?eventId=…` | One public person or null. A candidate must have checked in after the caller, be available on Discover, have an exact shared goal/tag or complementary seek/offer field, and not be dismissed. Polled every three seconds. |
+| `DELETE /api/notifications/:participantId?eventId=…` | Persisted private dismissal; next eligible suggestion can appear on the next poll. |
+
+Ordering stays on the server: unmet first, shared goal, seek/offer complement,
+shared answers, recently opened, stable identifier tie-break. Explanations quote
+only real consented fields. Without a shared field, directory cards show an
+explicitly attributed seek/offer pair or the person's verbatim goal; they never
+claim shared interests or evaluate the person. Such a fallback cannot trigger an
+arrival notification. Closing/cancelling never restores availability; the
+attendee must open it manually.
+
+Validation and schema audit: [Task 5B](docs/Task5B-Validation.md).

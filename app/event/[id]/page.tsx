@@ -4,6 +4,7 @@ import { api, supabase } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import type { Answer, OpenEntry } from "../../../lib/open-now";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
+import { Discover, HomeSuggestions } from "../../components/discover";
 import { MyPeople } from "../../components/conversation";
 import { ConnectionFlow } from "../../components/connection-flow";
 import { BottomNav, NavIcon, type Tab } from "../../components/bottom-nav";
@@ -31,7 +32,6 @@ export default function EventHome({
     [error, setError] = useState(""),
     [offline, setOffline] = useState(false),
     [busy, setBusy] = useState(false),
-    [list, setList] = useState<OpenEntry[] | null>(null),
     [edit, setEdit] = useState(false),
     [questions, setQuestions] = useState(false),
     [clock, setClock] = useState(Date.now()),
@@ -77,10 +77,8 @@ export default function EventHome({
       if (running) return;
       running = true;
       try {
-        const entries = await api<OpenEntry[]>(`/api/events/${id}/open`);
         const p = await api<Profile>(`/api/profile?eventId=${id}`);
         if (live) {
-          setList(entries);
           setProfile(p);
           setOffline(false);
         }
@@ -224,17 +222,13 @@ export default function EventHome({
                     </button>
                   </div>
                 </section>
-                <section className="panel">
-                  <p className="eyebrow">Around the event</p>
-                  <h2>Find your next conversation</h2>
-                  <p className="quiet">
-                    Station suggestions will appear here when available.
-                  </p>
-                </section>
-                <section className="rounded-2xl bg-[#DCEFE7] p-5" role="status">
-                  <h2>You’re up to date</h2>
-                  <p className="quiet">Your event updates will appear here.</p>
-                </section>
+                <HomeSuggestions
+                  eventId={id}
+                  onRequest={(p) => {
+                    setSelection(p);
+                    setTab("Requests");
+                  }}
+                />
               </>
             )}
             {tab === "Profile" && profile.profileSaved && (
@@ -340,6 +334,11 @@ export default function EventHome({
                 >
                   <ConnectionFlow
                     mode={tab === "Matches" ? "matches" : "requests"}
+                    onRequest={(p) => setSelection({ ...p, goalLine: "" })}
+                    onDiscover={() => {
+                      setFlow(false);
+                      setTab("Discover");
+                    }}
                     eventId={id}
                     onFlow={setFlow}
                     parentOffline={offline}
@@ -353,55 +352,35 @@ export default function EventHome({
                 </div>
                 {!flow && (
                   <>
-                    <section
-                      hidden={tab !== "Discover"}
-                      className="availability panel"
-                    >
-                      <div>
-                        <h2>Your invitation to chat · open again when ready</h2>
-                        <p>
-                          {open
-                            ? `Open until ${new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${Math.ceil((until - clock) / 60000)} min left`
-                            : "You’re keeping to yourself for now."}
-                        </p>
-                        <p className="quiet">
-                          Opening shows your name and goal in this event for 15
-                          minutes.
-                        </p>
-                      </div>
-                      <div>
-                        <button
-                          role="switch"
-                          aria-checked={open}
-                          disabled={busy || offline || connectionOffline}
-                          onClick={() =>
-                            void action(async () => {
-                              const v = await api<{ openUntil: string | null }>(
-                                `/api/events/${id}/availability`,
-                                "PUT",
-                                { open: !open },
-                              );
-                              setProfile({
-                                ...profile,
-                                openUntil: v.openUntil,
-                              });
-                            })
-                          }
-                        >
-                          {open
-                            ? "Open to chat · turn off"
-                            : "I’m open to chat"}
-                        </button>
-                        {open && (
+                    <details hidden={tab !== "Discover"} className="panel !p-4">
+                      <summary className="min-h-12 flex items-center justify-between gap-3 cursor-pointer text-[15px] font-semibold">
+                        <span>Your availability</span>
+                        <span className="chip">
+                          {open ? "Open to chat" : "Paused · open when ready"}
+                        </span>
+                      </summary>
+                      <div className="availability pt-3">
+                        <div>
+                          <h2 className="!text-[15px] !my-0">
+                            Your availability
+                          </h2>
+                          <p className="quiet text-[13px] !my-1">
+                            {open
+                              ? `Open until ${new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${Math.ceil((until - clock) / 60000)} min left`
+                              : "You’re keeping to yourself for now."}
+                          </p>
+                        </div>
+                        <div>
                           <button
-                            className="link-button"
+                            role="switch"
+                            aria-checked={open}
                             disabled={busy || offline || connectionOffline}
                             onClick={() =>
                               void action(async () => {
                                 const v = await api<{
                                   openUntil: string | null;
                                 }>(`/api/events/${id}/availability`, "PUT", {
-                                  open: true,
+                                  open: !open,
                                 });
                                 setProfile({
                                   ...profile,
@@ -410,107 +389,44 @@ export default function EventHome({
                               })
                             }
                           >
-                            Stay open for 15 more minutes
+                            {open
+                              ? "Open to chat · turn off"
+                              : "I’m open to chat"}
                           </button>
-                        )}
-                      </div>
-                    </section>
-                    <section hidden={tab !== "Discover"}>
-                      <div className="section-title">
-                        <h2>Open to chat</h2>
-                        <button
-                          className="link-button"
-                          disabled={busy || offline || connectionOffline}
-                          onClick={() => setQuestions(true)}
-                        >
-                          Edit your answers
-                        </button>
-                      </div>
-                      <p className="quiet">
-                        The list order is not a ranking. Start with a hello, and
-                        check that now is a good time.
-                      </p>
-                      {list === null ? (
-                        <Loading label="Seeing who’s open…" />
-                      ) : list.length === 0 ? (
-                        <div className="empty panel">
-                          <span className="hello-mark" aria-hidden="true">
-                            hello.
-                          </span>
-                          <h2>
-                            Nobody’s open right now — you can be the first
-                          </h2>
-                          <p>
-                            You can open to chat above, or say hello to someone
-                            nearby.
-                          </p>
-                          <label>
-                            Event code
-                            <input readOnly value={profile.event.code} />
-                          </label>
-                          <a
-                            href={`/join/${profile.event.code}`}
-                            className="text-link"
-                          >
-                            Share this event invitation →
-                          </a>
+                          {open && (
+                            <button
+                              className="link-button"
+                              disabled={busy || offline || connectionOffline}
+                              onClick={() =>
+                                void action(async () => {
+                                  const v = await api<{
+                                    openUntil: string | null;
+                                  }>(`/api/events/${id}/availability`, "PUT", {
+                                    open: true,
+                                  });
+                                  setProfile({
+                                    ...profile,
+                                    openUntil: v.openUntil,
+                                  });
+                                })
+                              }
+                            >
+                              Stay open for 15 more minutes
+                            </button>
+                          )}
                         </div>
-                      ) : (
-                        <ul className="people">
-                          {list.map((p, i) => (
-                            <li className="person" key={i}>
-                              <Avatar name={p.displayName} />
-                              <h3 className="mt-3">{p.displayName}</h3>
-                              <p>{p.goalLine}</p>
-                              {p.chip && <span className="chip">{p.chip}</span>}
-                              <div className="actions">
-                                <button
-                                  disabled={
-                                    busy || offline || connectionOffline
-                                  }
-                                  onClick={() => setSelection(p)}
-                                >
-                                  Invite to chat
-                                </button>
-                                <button
-                                  className="link-button"
-                                  disabled={
-                                    busy || offline || connectionOffline
-                                  }
-                                  onClick={() =>
-                                    void action(async () => {
-                                      await api("/api/blocks", "POST", {
-                                        eventId: id,
-                                        participant: p.participantId,
-                                      });
-                                    })
-                                  }
-                                >
-                                  Block
-                                </button>
-                                <button
-                                  className="link-button"
-                                  disabled={
-                                    busy || offline || connectionOffline
-                                  }
-                                  onClick={() =>
-                                    void action(async () => {
-                                      await api("/api/reports", "POST", {
-                                        eventId: id,
-                                        participant: p.participantId,
-                                      });
-                                      setError("Report received.");
-                                    })
-                                  }
-                                >
-                                  Report
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
+                      </div>
+                    </details>
+                    <div hidden={tab !== "Discover"}>
+                      <Discover
+                        eventId={id}
+                        onRequest={(p) => {
+                          setSelection(p);
+                          setTab("Requests");
+                        }}
+                        disabled={offline || connectionOffline}
+                      />
+                    </div>
                   </>
                 )}
               </>

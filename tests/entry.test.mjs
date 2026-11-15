@@ -283,7 +283,10 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
         (await call("GET", `events/${event}/open`, undefined, "2")).data,
         [],
       );
-      await db.query("UPDATE event_participants SET checked_in_at=now() WHERE event_id=$1",[event]);
+      await db.query(
+        "UPDATE event_participants SET checked_in_at=now() WHERE event_id=$1",
+        [event],
+      );
       const start = Date.now();
       let r = await call("PUT", `events/${event}/availability`, { open: true });
       assert.equal(r.status, 200);
@@ -354,8 +357,12 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
       );
       assert.match(ui, /3000/);
       assert.match(ui, /Connection lost/);
-      assert.match(ui, /Nobody’s open right now/);
-      assert.match(ui, /list order is not a ranking/);
+      const discoverUI = await readFile(
+        new URL("../app/components/discover.tsx", import.meta.url),
+        "utf8",
+      );
+      assert.match(discoverUI, /Your next hello is ahead/);
+      assert.doesNotMatch(discoverUI, /score|percentage|ranking/i);
     },
   );
   await t.test(

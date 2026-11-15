@@ -1,13 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "../../lib/supabase";
-import {
-  connectionScreen,
-  type ConnectionState,
-  type Connection,
-} from "../../lib/connections";
-import { Conversation, PrepCard } from "./conversation";
-import { ErrorMessage } from "./shared";
+import type { ConnectionState, Connection } from "../../lib/connections";
+import { Conversation } from "./conversation";
+import { MatchedProfile } from "./matched-profile";
+import { Discover } from "./discover";
+import { Avatar, ErrorMessage } from "./shared";
 export function ConnectionFlow({
   eventId,
   onFlow,
@@ -16,54 +14,34 @@ export function ConnectionFlow({
   parentOffline = false,
   onOffline,
   mode = "requests",
+  onDiscover,
+  onRequest,
 }: {
-  mode?: "requests" | "matches";
   eventId: string;
   onFlow: (active: boolean) => void;
   selection: { participantId?: string; displayName: string } | null;
   clearSelection: () => void;
   parentOffline?: boolean;
   onOffline?: (offline: boolean) => void;
+  mode?: "requests" | "matches";
+  onDiscover?: () => void;
+  onRequest?: (p: { participantId: string; displayName: string }) => void;
 }) {
-  const choiceHeading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (selection) choiceHeading.current?.focus();
-  }, [selection]);
-  const [state, setState] = useState<
-    | (ConnectionState & { notice?: { id: string; message: string } | null })
-    | null
-  >(null);
-  const [offline, setOffline] = useState(false),
+  const [state, setState] = useState<ConnectionState | null>(null),
+    [offline, setOffline] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [duration, setDuration] = useState(5),
+    [tab, setTab] = useState("Received"),
     [code, setCode] = useState(""),
-    [browse, setBrowse] = useState(false),
-    [waitingId, setWaitingId] = useState<string | null>(null),
-    [notice, setNotice] = useState(""),
-    [confirmation, setConfirmation] = useState("");
-  useEffect(() => onOffline?.(offline), [offline, onOffline]);
-  const receive = useCallback(
-    (
-      s: ConnectionState & { notice?: { id: string; message: string } | null },
-    ) => {
-      if (
-        s.session &&
-        localStorage.getItem(`icebreak-finished-${s.session.id}`) === "yes" &&
-        s.session.arc.own.done
-      )
-        s = { ...s, session: null };
-      setState(s);
-      if (
-        s.notice &&
-        sessionStorage.getItem(`icebreak-notice-${s.notice.id}`) !== "seen"
-      ) {
-        setNotice(s.notice.message);
-        sessionStorage.setItem(`icebreak-notice-${s.notice.id}`, "seen");
-      }
-    },
-    [],
-  );
+    [profileId, setProfileId] = useState<string | null>(null);
+  const receive = useCallback((s: ConnectionState) => {
+    if (
+      s.session?.arc.own.done &&
+      localStorage.getItem(`icebreak-finished-${s.session.id}`) === "yes"
+    )
+      s = { ...s, session: null };
+    setState(s);
+  }, []);
   useEffect(() => {
     let live = true,
       running = false;
@@ -85,21 +63,15 @@ export function ConnectionFlow({
       }
     }
     void poll();
-    const timer = setInterval(() => void poll(), 3000);
+    const t = setInterval(() => void poll(), 3000);
     return () => {
       live = false;
-      clearInterval(timer);
+      clearInterval(t);
     };
   }, [eventId, receive]);
-  const waiting = state?.outgoing.find((r) =>
-    waitingId ? r.id === waitingId : true,
-  );
-  const session = state?.session;
-  const active =
-    (mode !== "matches" || !!session) &&
-    !!state &&
-    connectionScreen(state, waitingId) !== "board" &&
-    (!!session || !browse);
+  useEffect(() => onOffline?.(offline), [offline, onOffline]);
+  const session = state?.session,
+    active = !!session || !!selection || !!profileId;
   useEffect(() => onFlow(active), [active, onFlow]);
   async function act(
     path: string,
@@ -111,7 +83,6 @@ export function ConnectionFlow({
     try {
       const s = await api<ConnectionState>(path, method, { eventId, ...body });
       receive(s);
-      setOffline(false);
       return s;
     } catch (e) {
       setError((e as Error).message);
@@ -120,34 +91,18 @@ export function ConnectionFlow({
       setBusy(false);
     }
   }
-  async function send(byCode = false) {
-    const s = await act(
-      byCode ? "/api/connections/code" : "/api/connections",
-      "POST",
-      byCode
-        ? { code, duration }
-        : { participant: selection?.participantId, duration },
-    );
-    if (s) {
-      setWaitingId(s.outgoing.at(-1)?.id ?? null);
-      setBrowse(false);
-      clearSelection();
-      setCode("");
-    }
-  }
-  async function safety(requestId: string, report: boolean) {
+  async function safety(id: string, report: boolean) {
     setBusy(true);
     setError("");
-    setConfirmation("");
     try {
       await api(report ? "/api/reports" : "/api/blocks", "POST", {
         eventId,
-        requestId,
+        requestId: id,
       });
       receive(
         await api<ConnectionState>(`/api/connections?eventId=${eventId}`),
       );
-      setConfirmation(report ? "Report received." : "Block saved.");
+      if (report) setError("Report received.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -155,334 +110,328 @@ export function ConnectionFlow({
     }
   }
   const disabled = busy || offline || parentOffline;
-  function requestAction(r: Connection, action: string) {
-    return act(`/api/connections/${r.id}`, "PATCH", { action });
+  async function requestAction(r: Connection, action: string) {
+    await act(`/api/connections/${r.id}`, "PATCH", { action });
   }
-  if (!state)
-    return (
-      <section className="panel connect-panel" aria-label="Connections">
-        {offline && !parentOffline && (
-          <p role="status" className="notice">
-            Connection lost. Retrying automatically.
-          </p>
-        )}
-        <p role="status">Restoring your connections…</p>
-      </section>
-    );
-  if (mode === "matches" && !session)
-    return (
-      <section className="panel empty">
-        <span className="hello-mark" aria-hidden="true">
-          <svg
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-          >
-            <path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8 M16 12a4 4 0 1 0 0-8 M2 21v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3 M18 14a4 4 0 0 1 4 4v3" />
-          </svg>
-        </span>
-        <h2 className="mt-4">Your next hello is ahead</h2>
-        <p className="quiet">
-          Accepted introductions will appear here. Find someone in Discover and
-          invite them to a short conversation.
-        </p>
-      </section>
-    );
+  const currentTab = mode === "matches" ? "Matches" : tab;
   return (
-    <section className="panel connect-panel" aria-label="Connections">
-      {offline && !parentOffline && (
+    <section className="space-y-4" aria-label="Connections">
+      {offline && (
         <p className="notice" role="status">
           Connection lost. Retrying automatically. Controls are read-only until
           we reconnect.
         </p>
       )}
       <ErrorMessage message={error} />
-      {confirmation && <p role="status">{confirmation}</p>}
-      {notice && !session && (
-        <p role="status">
-          {notice}{" "}
-          <button className="link-button" onClick={() => setNotice("")}>
-            Dismiss
-          </button>
-        </p>
-      )}
       {session && session.state !== "meeting" ? (
-        <Conversation
-          key={session.id}
-          eventId={eventId}
-          session={session}
-          onFinish={() => {
-            localStorage.setItem(`icebreak-finished-${session.id}`, "yes");
-            setState({ ...state, session: null });
-          }}
-        />
+        <section className="panel">
+          <Conversation
+            key={session.id}
+            eventId={eventId}
+            session={session}
+            onFinish={() => {
+              localStorage.setItem(`icebreak-finished-${session.id}`, "yes");
+              setState(state ? { ...state, session: null } : null);
+              onDiscover?.();
+            }}
+          />
+        </section>
       ) : session ? (
-        <>
-          <p className="eyebrow">
-            {session.state === "started"
-              ? "Ready to talk"
-              : "Your meeting point"}
-          </p>
-          <h2>
-            {session.state === "started"
-              ? "Your conversation has started."
-              : `Say hello to ${session.partner.displayName}`}
-          </h2>
-          <p>
-            {session.partner.displayName} · {session.partner.goalLine}
-          </p>
-          <p>
-            {session.duration} minutes · {session.sharedReason}
-          </p>
-          {session.state === "meeting" && (
-            <>
-              {session.meetingPoint && (
-                <figure className="meeting-point">
-                  {/* The organiser supplies the photo; directions always remain in text. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={session.meetingPoint.photoUrl}
-                    alt={`Meeting point: ${session.meetingPoint.label}`}
-                  />
-                  <figcaption>
-                    <h3>{session.meetingPoint.label}</h3>
-                    <p>{session.meetingPoint.direction}</p>
-                  </figcaption>
-                </figure>
-              )}
-              <div data-prep-card-slot="">
-                <PrepCard session={session} />
-              </div>
-              <p role="status">
-                {session.arrived
-                  ? "You’re here. Waiting for your partner."
-                  : session.partnerArrived
-                    ? "Your partner is here."
-                    : session.partnerOnTheirWay
-                      ? "Your partner is on their way."
-                      : "Head over when you’re ready."}
-              </p>
-              <div className="actions">
-                <button
-                  disabled={disabled || session.arrived}
-                  onClick={() =>
-                    void act(`/api/sessions/${session.id}/arrive`, "POST")
-                  }
-                >
-                  {session.arrived ? "You’re here" : "I’m here"}
-                </button>
-                {session.arrived && (
-                  <button
-                    disabled={disabled}
-                    onClick={() =>
-                      void act(`/api/sessions/${session.id}/start`, "POST")
-                    }
-                  >
-                    Start anyway
-                  </button>
-                )}
-                <button
-                  className="secondary"
-                  disabled={disabled}
-                  onClick={() =>
-                    void act(`/api/sessions/${session.id}/late`, "POST")
-                  }
-                >
-                  Running late
-                </button>
-                <button
-                  className="link-button"
-                  disabled={disabled}
-                  onClick={() =>
-                    void act(`/api/sessions/${session.id}/cancel`, "POST")
-                  }
-                >
-                  Cancel meeting
-                </button>
-              </div>
-            </>
-          )}
-        </>
-      ) : waiting && !browse ? (
-        <>
-          <p className="eyebrow">An invitation, with room to breathe</p>
-          <h2>Waiting for {waiting.displayName}</h2>
-          <p>{waiting.goalLine}</p>
-          <p>
-            {waiting.sharedReason} · {waiting.duration} minutes
-          </p>
-          <p>They’ll get a gentle nudge; no reply just means not now.</p>
-          <p className="quiet">
-            This invitation quietly ends after about 15 minutes. There’s nothing
-            else you need to do.
+        <section className="panel">
+          <MatchedProfile
+            eventId={eventId}
+            sessionId={session.id}
+            session={session}
+          />
+          <p role="status">
+            {session.arrived
+              ? "You’re here. Waiting for your partner."
+              : session.partnerArrived
+                ? "Your partner is here."
+                : session.partnerOnTheirWay
+                  ? "Your partner is on their way."
+                  : "Head over when you’re ready."}
           </p>
           <div className="actions">
             <button
+              disabled={disabled || session.arrived}
+              onClick={() =>
+                void act(`/api/sessions/${session.id}/arrive`, "POST")
+              }
+            >
+              {session.arrived ? "You’re here" : "I’m here"}
+            </button>
+            {session.arrived && (
+              <button
+                className="secondary"
+                disabled={disabled}
+                onClick={() =>
+                  void act(`/api/sessions/${session.id}/start`, "POST")
+                }
+              >
+                Start anyway
+              </button>
+            )}
+            <button
               className="secondary"
               disabled={disabled}
-              onClick={() => void requestAction(waiting, "cancel")}
+              onClick={() =>
+                void act(`/api/sessions/${session.id}/late`, "POST")
+              }
             >
-              Cancel request
+              Running late
             </button>
             <button
               className="link-button"
-              onClick={() => {
-                setBrowse(true);
-                clearSelection();
-              }}
+              disabled={disabled}
+              onClick={() =>
+                void act(`/api/sessions/${session.id}/cancel`, "POST")
+              }
             >
-              Ask someone else
+              Cancel meeting
             </button>
           </div>
-        </>
-      ) : (
-        <>
-          {!state && !offline && (
-            <p role="status">Restoring your connections…</p>
-          )}
-          {state?.incoming.map((r) => (
-            <article className="incoming-request" key={r.id}>
-              <p className="eyebrow">
-                {r.kind === "code"
-                  ? "Already together?"
-                  : "An invitation to chat"}
-              </p>
-              <h2>{r.displayName}</h2>
-              <p>{r.goalLine}</p>
-              <p>
-                {r.sharedReason} · {r.duration} minutes
-              </p>
-              <p className="quiet">
-                {Math.max(
-                  0,
-                  Math.ceil((Date.parse(r.expiresAt) - Date.now()) / 60000),
-                )}{" "}
-                minutes left · until{" "}
-                {new Date(r.expiresAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
-              <div className="actions">
-                <button
-                  disabled={disabled}
-                  onClick={() => void requestAction(r, "accept")}
-                >
-                  {r.kind === "code" ? "Start" : "Accept"}
-                </button>
-                <button
-                  className="secondary"
-                  disabled={disabled}
-                  onClick={() => void requestAction(r, "later")}
-                >
-                  Later
-                </button>
-                <button
-                  className="link-button"
-                  disabled={disabled}
-                  onClick={() => void safety(r.id, false)}
-                >
-                  Block
-                </button>
-                <button
-                  className="link-button"
-                  disabled={disabled}
-                  onClick={() => void safety(r.id, true)}
-                >
-                  Report
-                </button>
-              </div>
-            </article>
-          ))}
-          {selection && (
-            <div className="request-choice">
-              <h2 ref={choiceHeading} tabIndex={-1}>
-                Invite {selection.displayName} to chat
-              </h2>
-              <label>
-                Time together
-                <select
-                  value={duration}
-                  onChange={(e) => setDuration(Number(e.target.value))}
-                >
-                  <option value={5}>5 minutes</option>
-                  <option value={10}>10 minutes</option>
-                </select>
-              </label>
-              <div className="actions">
-                <button
-                  disabled={disabled || !selection.participantId}
-                  onClick={() => void send()}
-                >
-                  Send request
-                </button>
-                <button className="link-button" onClick={clearSelection}>
-                  Back
-                </button>
-              </div>
-              {error && (
-                <button
-                  className="secondary"
-                  disabled={disabled}
-                  onClick={() => void send()}
-                >
-                  Retry request
-                </button>
-              )}
-            </div>
-          )}
-          <h2>Already said hello?</h2>
+        </section>
+      ) : profileId ? (
+        <section className="panel">
+          <button className="link-button" onClick={() => setProfileId(null)}>
+            Back to matches
+          </button>
+          <MatchedProfile eventId={eventId} sessionId={profileId} />
+        </section>
+      ) : selection ? (
+        <section className="panel">
+          <p className="eyebrow">A short introduction</p>
+          <h2>Invite {selection.displayName} to chat</h2>
           <p>
-            Your short code:{" "}
-            <strong className="short-code">{state?.shortCode ?? "…"}</strong>
+            Start with 5 minutes. If you both want to continue, you can extend
+            together.
           </p>
-          <p className="quiet">
-            Share this in person. You’ll confirm before a conversation starts.
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send(true);
-            }}
-          >
-            <label>
-              Their short code
-              <input
-                autoComplete="off"
-                autoCapitalize="characters"
-                maxLength={8}
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                required
-              />
-            </label>
-            <label>
-              Time together
-              <select
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-              >
-                <option value={5}>5 minutes</option>
-                <option value={10}>10 minutes</option>
-              </select>
-            </label>
-            <button disabled={disabled || !state}>Connect with code</button>
-          </form>
-          {state?.outgoing.map((r) => (
+          <div className="actions">
             <button
-              className="link-button"
-              key={r.id}
-              onClick={() => {
-                setWaitingId(r.id);
-                setBrowse(false);
+              disabled={disabled || !selection.participantId}
+              onClick={async () => {
+                const s = await act("/api/connections", "POST", {
+                  participant: selection.participantId,
+                });
+                if (s) {
+                  clearSelection();
+                  setTab("Sent");
+                }
               }}
             >
-              Waiting for {r.displayName} →
+              Send request
             </button>
-          ))}
+            <button className="link-button" onClick={clearSelection}>
+              Back
+            </button>
+          </div>
+        </section>
+      ) : (
+        <>
+          {mode === "requests" && (
+            <div
+              className="flex rounded-2xl bg-white p-1 gap-1"
+              role="tablist"
+              aria-label="Manage requests"
+            >
+              {["Received", "Sent", "Matches", "Saved"].map((t) => (
+                <button
+                  role="tab"
+                  aria-selected={currentTab === t}
+                  className={`flex-1 !px-2 text-[13px] ${currentTab === t ? "" : "secondary !border-0"}`}
+                  key={t}
+                  onClick={() => setTab(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          {!state ? (
+            <p role="status">Restoring your connections…</p>
+          ) : currentTab === "Saved" ? (
+            <Discover
+              eventId={eventId}
+              onlySaved
+              onRequest={(p) => onRequest?.(p)}
+            />
+          ) : currentTab === "Matches" ? (
+            <>
+              {!state.matches?.length && (
+                <section className="panel empty">
+                  <span className="hello-mark" aria-hidden="true">
+                    hello.
+                  </span>
+                  <h2 className="mt-4">Your next hello is ahead</h2>
+                  <p className="quiet">
+                    Accepted introductions appear here with a place to meet.
+                  </p>
+                </section>
+              )}
+              {state.matches?.map((m) => (
+                <article className="panel" key={m.id}>
+                  <Avatar name={m.displayName} />
+                  <h3 className="mt-3">{m.displayName}</h3>
+                  <p>
+                    {m.meetingPoint?.label ?? "Together in person"} ·{" "}
+                    {new Date(m.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                  <button
+                    className="secondary"
+                    onClick={() => setProfileId(m.id)}
+                  >
+                    View matched profile
+                  </button>
+                </article>
+              ))}
+            </>
+          ) : (
+            <>
+              {(currentTab === "Received" ? state.incoming : state.outgoing)
+                .length === 0 && (
+                <section className="panel empty">
+                  <span className="hello-mark" aria-hidden="true">
+                    hello.
+                  </span>
+                  <h2 className="mt-4">
+                    {currentTab === "Received"
+                      ? "Room for a new hello"
+                      : "Start with a short introduction"}
+                  </h2>
+                  <p className="quiet">
+                    {currentTab === "Received"
+                      ? "Invitations will appear here. You can accept when you’re ready, or choose Later."
+                      : "Find someone in Discover and send an invitation."}
+                  </p>
+                </section>
+              )}
+              {(currentTab === "Received"
+                ? state.incoming
+                : state.outgoing
+              ).map((r) => (
+                <article className="panel" key={r.id}>
+                  <div className="flex gap-4 items-center">
+                    <Avatar name={r.displayName} />
+                    <div>
+                      <h3>{r.displayName}</h3>
+                      <p className="quiet !my-1">{r.goalLine}</p>
+                    </div>
+                  </div>
+                  <p>{r.sharedReason}</p>
+                  <p className="quiet text-[13px]">
+                    {r.duration} minutes ·{" "}
+                    {r.status === "expired"
+                      ? "Expired / closed"
+                      : r.status === "accepted"
+                        ? "Accepted"
+                        : "Pending"}
+                  </p>
+                  <div className="actions">
+                    {currentTab === "Received" ? (
+                      <>
+                        <button
+                          disabled={disabled}
+                          onClick={() => void requestAction(r, "accept")}
+                        >
+                          {r.kind === "code" ? "Start" : "Accept"}
+                        </button>
+                        <button
+                          className="secondary"
+                          disabled={disabled}
+                          onClick={() => void requestAction(r, "later")}
+                        >
+                          Later
+                        </button>
+                        <button
+                          className="link-button"
+                          disabled={disabled}
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await api("/api/blocks", "POST", {
+                                eventId,
+                                requestId: r.id,
+                              });
+                              receive(
+                                await api<ConnectionState>(
+                                  `/api/connections?eventId=${eventId}`,
+                                ),
+                              );
+                            } catch (e) {
+                              setError((e as Error).message);
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          Block
+                        </button>
+                        <button
+                          className="link-button"
+                          disabled={disabled}
+                          onClick={() => void safety(r.id, true)}
+                        >
+                          Report
+                        </button>
+                      </>
+                    ) : (
+                      r.status === "pending" && (
+                        <button
+                          className="secondary"
+                          disabled={disabled}
+                          onClick={() => void requestAction(r, "cancel")}
+                        >
+                          Withdraw request
+                        </button>
+                      )
+                    )}
+                  </div>
+                </article>
+              ))}
+            </>
+          )}
+          {currentTab === "Received" && (
+            <section className="panel">
+              <h2>Already said hello?</h2>
+              <p>
+                Your short code:{" "}
+                <strong className="short-code">
+                  {state?.shortCode ?? "…"}
+                </strong>
+              </p>
+              <p className="quiet">
+                Share this in person. You’ll both confirm a five-minute
+                conversation.
+              </p>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (await act("/api/connections/code", "POST", { code })) {
+                    setCode("");
+                    setTab("Sent");
+                  }
+                }}
+              >
+                <label>
+                  Their short code
+                  <input
+                    autoComplete="off"
+                    maxLength={8}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    required
+                  />
+                </label>
+                <button className="secondary" disabled={disabled}>
+                  Connect with code
+                </button>
+              </form>
+            </section>
+          )}
         </>
       )}
     </section>

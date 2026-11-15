@@ -1,5 +1,6 @@
 "use client";
 import { use, useEffect, useState } from "react";
+import { StationEditor } from "../../components/station-editor";
 import { MeetingPointEditor } from "../../components/meeting-point-editor";
 import { CheckIn } from "../../components/check-in";
 import QRCode from "qrcode";
@@ -90,6 +91,7 @@ export default function Invitation({
           )}
         </section>
         {invite && <CheckIn eventId={id} />}
+        {invite && <StationEditor eventId={id} />}
         {invite && (
           <MeetingPointEditor
             eventId={id}

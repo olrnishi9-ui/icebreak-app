@@ -57,6 +57,7 @@ enum RequestDecision {
 }
 
 model users {
+  extension_proposals session_extensions[]
   close_choices session_choices[]
   private_notes session_notes[]
   organized_events events[]             @relation("relation_0_organizer")
@@ -72,6 +73,7 @@ model users {
 }
 
 model events {
+  stations stations[]
   organizer    users                @relation("relation_0_organizer", fields: [organizer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   participants event_participants[] @relation("relation_1_event")
   meeting_points meeting_points[]
@@ -90,6 +92,11 @@ model events {
 }
 
 model event_participants {
+  saved_people saved_people[] @relation("saved_owner")
+  saved_by saved_people[] @relation("saved_target")
+  dismissed_stations station_dismissals[]
+  dismissed_discoveries discovery_dismissals[] @relation("discovery_owner")
+  discovery_dismissed_by discovery_dismissals[] @relation("discovery_target")
   event               events                @relation("relation_1_event", fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user                users                 @relation("relation_2_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   answers             answers[]             @relation("relation_4_participant")
@@ -256,6 +263,8 @@ model feedback {
   conversation_ease        Int?         @db.SmallInt
   perceived_value          Int?         @db.SmallInt
   willingness_to_reconnect Boolean?
+  reasons String[] @default([])
+  private_note String @default("") @db.VarChar(500)
   created_at               DateTime     @default(now()) @db.Timestamptz(6)
 
   @@unique([interaction_id, user_id])
@@ -275,6 +284,7 @@ model meeting_points {
 }
 
 model sessions {
+  extensions session_extensions[]
   close_choices session_choices[]
   private_notes session_notes[]
   request connection_requests @relation(fields:[request_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
@@ -340,4 +350,52 @@ model session_notes {
   user_id String @db.Uuid
   text String @db.VarChar(500)
   @@id([session_id,user_id])
+}
+
+// Cross-event composite FKs and all RLS policies live in the additive migration.
+model saved_people {
+ owner event_participants @relation("saved_owner",fields:[event_id,user_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
+ person event_participants @relation("saved_target",fields:[event_id,person_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
+ event_id String @db.Uuid
+ user_id String @db.Uuid
+ person_id String @db.Uuid
+ created_at DateTime @default(now()) @db.Timestamptz(6)
+ @@id([event_id,user_id,person_id])
+}
+model stations {
+ event events @relation(fields:[event_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ dismissals station_dismissals[]
+ id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+ event_id String @db.Uuid
+ name String @db.VarChar(80)
+ description String @default("") @db.VarChar(500)
+ tags String[]
+ location_note String @default("") @db.VarChar(240)
+ @@unique([event_id,id])
+}
+model station_dismissals {
+ owner event_participants @relation(fields:[event_id,user_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
+ station stations @relation(fields:[event_id,station_id],references:[event_id,id],onDelete:Cascade,onUpdate:NoAction)
+ event_id String @db.Uuid
+ user_id String @db.Uuid
+ station_id String @db.Uuid
+ @@id([event_id,user_id,station_id])
+}
+model discovery_dismissals {
+ owner event_participants @relation("discovery_owner",fields:[event_id,user_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
+ person event_participants @relation("discovery_target",fields:[event_id,person_id],references:[event_id,user_id],onDelete:Cascade,onUpdate:NoAction)
+ event_id String @db.Uuid
+ user_id String @db.Uuid
+ person_id String @db.Uuid
+ @@id([event_id,user_id,person_id])
+}
+model session_extensions {
+ session sessions @relation(fields:[session_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ proposer users @relation(fields:[proposer_id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ session_id String @db.Uuid
+ base_duration Int
+ proposer_id String @db.Uuid
+ a_agrees Boolean
+ b_agrees Boolean
+ @@id([session_id,base_duration])
 }
