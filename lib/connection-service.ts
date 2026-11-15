@@ -1,3 +1,4 @@
+import { snapshotArc, ArcService } from "./arc-service";
 import {
   REQUEST_TTL_MIN,
   RE_REQUEST_COOLDOWN_MIN,
@@ -88,7 +89,9 @@ export class ConnectionService {
       "SELECT * FROM sessions WHERE event_id=$1 AND $2 IN(user_a_id,user_b_id) ORDER BY created_at DESC,id DESC",
       [event, p.user_id],
     );
-    const live = sessions.find((s) => !s.closed_at);
+    const live =
+      sessions.find((s) => !s.closed_at) ??
+      (sessions[0]?.started_at ? sessions[0] : undefined);
     return {
       shortCode: own.short_code,
       incoming: live
@@ -124,7 +127,12 @@ export class ConnectionService {
       duration: s.duration,
       sharedReason: s.shared_reason,
       meetingPoint: s.meeting_point,
-      state: s.started_at ? "started" : "meeting",
+      state: s.closed_at ? "closing" : s.started_at ? "started" : "meeting",
+      arc: await new ArcService(db, this.now).viewBySession(
+        event,
+        viewer,
+        s.id,
+      ),
       startedAt: s.started_at ? iso(s.started_at) : null,
       arrived: a ? s.arrived_a : s.arrived_b,
       partnerArrived: a ? s.arrived_b : s.arrived_a,
@@ -274,8 +282,9 @@ export class ConnectionService {
       point = assignMeetingPoint(points, new Map(live.map((p) => [p.id, p.n])));
       if (!point) return neutral();
     }
+    const script = await snapshotArc(db, event, r.sender_id, r.recipient_id);
     await db.query(
-      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+      `INSERT INTO sessions(event_id,request_id,user_a_id,user_b_id,duration,shared_reason,meeting_point,created_at,started_at,arc_script) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb)`,
       [
         event,
         r.id,
@@ -286,6 +295,7 @@ export class ConnectionService {
         point ? JSON.stringify(point) : null,
         this.time(),
         r.kind === "code" ? this.time() : null,
+        JSON.stringify(script),
       ],
     );
     await db.query(

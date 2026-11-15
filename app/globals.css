@@ -367,3 +367,9 @@ legend {
 .meeting-point figcaption { padding-block: .8rem; }
 .short-code { font-family: monospace; letter-spacing: .12em; font-size: 1.4rem; white-space: nowrap; }
 .request-choice { border-left: 3px solid currentColor; padding-left: 1rem; margin-bottom: 2rem; }
+.arc-card { padding: 1.25rem; margin-block: 1rem; border: 1px solid currentColor; border-radius: 1rem; }
+.conversation .actions { gap: .75rem; flex-wrap: wrap; }
+.conversation button { min-height: 44px; }
+.card-signal { outline: 2px solid currentColor; animation: card-offer 600ms ease-out; }
+@keyframes card-offer { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .card-signal { animation: none; } }

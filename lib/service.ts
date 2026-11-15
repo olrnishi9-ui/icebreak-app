@@ -415,6 +415,11 @@ export class EntryService {
     const ties = new Map(
       rows.map((r) => [r.id, randomBytes(4).readUInt32BE()]),
     );
+    const met = await this.db.query<{ other: string }>(
+      "SELECT CASE WHEN user_a_id=$2 THEN user_b_id ELSE user_a_id END AS other FROM interactions WHERE event_id=$1 AND $2 IN(user_a_id,user_b_id)",
+      [eventId, p.user_id],
+    );
+    for (const row of rows) row.met = met.some((m) => m.other === row.id);
     return openNow(
       caller,
       rows,

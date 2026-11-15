@@ -4,6 +4,7 @@ import { api } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import type { Answer, OpenEntry } from "../../../lib/open-now";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
+import { MyPeople } from "../../components/conversation";
 import { ConnectionFlow } from "../../components/connection-flow";
 import { ProfileEditor } from "../../components/profile-editor";
 export default function EventHome({
@@ -240,11 +241,12 @@ export default function EventHome({
                   selection={selection}
                   clearSelection={() => setSelection(null)}
                 />
+                <MyPeople eventId={id} />
                 {!flow && (
                   <>
                     <section className="availability panel">
                       <div>
-                        <h2>Your invitation to chat</h2>
+                        <h2>Your invitation to chat · open again when ready</h2>
                         <p>
                           {open
                             ? `Open until ${new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${Math.ceil((until - clock) / 60000)} min left`

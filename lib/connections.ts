@@ -1,3 +1,4 @@
+import type { ArcView } from "./arc-service";
 export type MeetingPoint = {
   id: string;
   label: string;
@@ -33,7 +34,8 @@ export type MeetSession = {
   duration: number;
   sharedReason: string;
   meetingPoint: MeetingPoint | null;
-  state: "meeting" | "started";
+  state: "meeting" | "started" | "closing";
+  arc: ArcView;
   startedAt: string | null;
   arrived: boolean;
   partnerArrived: boolean;
