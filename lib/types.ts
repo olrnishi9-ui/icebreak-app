@@ -1,6 +1,7 @@
 import type { Answer, Question } from "./open-now";
 export type Topic = { type: string; topic: string; visible: boolean };
 export type Profile = {
+  demoEmailLabel?: string;
   event: { id: string; name: string; code: string; demo?: boolean };
   role: string;
   organization: string;

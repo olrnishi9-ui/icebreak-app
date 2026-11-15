@@ -8,10 +8,67 @@ identifiers remain `icebreak-app`. Task 5A implements Part A only; Discover/Requ
 tabs, stations, notifications and extendable sessions remain Task 5B.
 
 
-## Task 5A current contract
+## Task 6 FINAL — attendee Show Mode
 
-This section governs the current entry flow; earlier task reports below describe
-historical implementations. See [Task 5A validation](docs/Task5A-Validation.md)
+This section supersedes the attendee email-code entry described below. Organiser
+email OTP remains unchanged. Show Mode does not verify email addresses or send
+email. Open `/sign-in`, enter an email **label**, then Continue → Choose Event →
+DEMO26 → the existing editable profile → Event Home. The landing page's Get
+started action opens this sign-in screen.
+
+Enable **Anonymous sign-ins** in the hosted Supabase project. Attendee submit uses
+`supabase.auth.signInAnonymously()` (reuses an existing anonymous session), then
+`POST /api/show/entry`. The SDK alone stores access/refresh tokens. The entered
+label is stored privately in `users.demo_email_label`, returned only on the
+caller's DEMO26 profile as `demoEmailLabel`, and explicitly marked unverified on
+the Profile tab. It is never an Auth email, contact field, verification claim,
+Discover field, or matching input. Existing confirmed sessions must use this
+attendee submit to enter Show Mode; they are replaced with Anonymous Auth.
+
+Apply the additive `202611150007_show_mode` migration before deploying. It adds
+one private varchar column to the existing RLS-protected `users` table; there
+are no new tables. Full migration SQL is in
+`prisma/migrations/202611150007_show_mode/migration.sql`.
+
+Shared data is ensured **by the server route**, transactionally and idempotently,
+on entry, Choose Event loading, and joining. `lib/show-seed.ts` contains the exact
+SQL statements; `prisma/show-seed.sql` is their complete optional manual equivalent,
+including transaction boundaries. Manual seeding is not required. The event row
+is locked to serialize repeated/concurrent ensures. Stable data-only IDs create
+a DEMO26 host and Alex/Maya, with **no Auth users**, and the requested meeting
+points and stations. Personas are checked in and refreshed open for 24 hours on
+each ensure. Their actual stored intention is “Explore something new”; their
+specified offers/needs and this shared intention supply grounded why-lines.
+Requests to personas remain pending until normal expiry; nothing auto-accepts.
+Ended events are not revived, and a conflicting non-show DEMO26 is not overwritten.
+
+| Route | Request | Result |
+| --- | --- | --- |
+| `POST /api/show/entry` | `{email}`: private label, max 254 characters | Requires valid Anonymous Auth; ensures shared event, stores caller's label, returns `{next:"/join"}`; does not join yet |
+| `GET /api/show/event` | — | Requires Anonymous Auth; ensures shared event, returns `{id,code:"DEMO26",name:"MeetMates Demo"}` |
+| `POST /api/show/join` | `{code:"DEMO26"}` | Requires Anonymous Auth; joins once with saved preset, check-in, 15-minute availability, personal QR, and completed optional setup; returns own profile for editing |
+
+The visitor's display name is the trimmed email prefix (max 80 characters), or
+Demo Guest. Role is Attendee; offer is Ideas; looking for is People; intention is
+Explore something new. Existing profile editing saves through `PUT /api/profile`.
+Retries preserve profile edits, QR and real conversation/availability state.
+Anonymous identities may use existing participant APIs only in DEMO26, and cannot
+create/manage events or stations, check people in, use account registration,
+or access another event. Existing RLS, consent, rejection timing, feedback privacy,
+request/meeting/arc/extension flows and availability rules stay unchanged.
+
+`npm test` includes SQL-backed Show Mode tests. `npm run test:browser` now follows
+the owner-approved Show Mode entry and real two-browser introduction loop.
+Screenshots are in `docs/screenshots/task6-show/` at 390×844. Browser Auth signup
+is a fixture; API operations use migrated PGlite SQL and real application services.
+Hosted Anonymous Auth, hosted migration application and Vercel deployment still
+require live verification. No email template or Redirect URL changes are needed.
+
+## Historical Task 5A account contract
+
+
+This section describes the retained email-account and organiser flow. Attendee
+Show Mode is governed by Task 6 above. See [Task 5A validation](docs/Task5A-Validation.md)
 and the [390×844 screenshot gallery](docs/screenshots/task5a/README.md).
 
 All private routes require a Supabase bearer token verified by `auth.getUser`.
@@ -61,15 +118,15 @@ when run by an administrator; this is never an attendee self-check-in path.
 The browser scripts use the placeholder build configuration
 `NEXT_PUBLIC_SUPABASE_URL=https://meetmates-test.invalid` and
 `NEXT_PUBLIC_SUPABASE_ANON_KEY=test-public-key`. They substitute Auth credentials
-and email delivery, not the SQL/RLS implementation. The old anonymous smoke entry
-point now runs the current email-code journey. Run `npm run test:browser`,
+and email delivery, not the SQL/RLS implementation. The primary smoke entry
+point now runs the Show Mode journey. Run `npm run test:browser`,
 `npm run test:connections:browser`, and `npm run test:arc:browser` against a running
 app built with that configuration. Hosted testing additionally needs
 `TEST_APP_URL`, real public Supabase configuration, and two disposable confirmed
 email-account access tokens `TEST_ACCOUNT_TOKEN_A` / `TEST_ACCOUNT_TOKEN_B`.
 Never commit credentials. Live OTP delivery remains a separate hosted check.
 
-### Judges demo
+### Historical organiser-created judges demo
 
 After migrating and deploying, open `/organiser`, sign in by email code, and
 choose **Create judges demo**. It creates a real event with a random event code,

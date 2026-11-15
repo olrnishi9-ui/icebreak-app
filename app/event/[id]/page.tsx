@@ -232,7 +232,14 @@ export default function EventHome({
               </>
             )}
             {tab === "Profile" && profile.profileSaved && (
-              <PersonalQR profile={profile} />
+              <>
+                <PersonalQR profile={profile} />
+                {profile.demoEmailLabel && (
+                  <p className="quiet break-words">
+                    Show mode email label · unverified: {profile.demoEmailLabel}
+                  </p>
+                )}
+              </>
             )}
             <ErrorMessage message={error} />
             {offline && (
