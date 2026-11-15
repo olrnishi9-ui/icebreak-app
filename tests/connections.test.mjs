@@ -38,7 +38,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
     "send, exact grounded reason, duration validation, goal fallback, cap-neutral duplicates and data-layer unique unordered pair",
     async () => {
       await reset();
-      for (const duration of [0, 6, "5", null])
+      for (const duration of [0, 6, 10, "5", null])
         assert.equal((await send("1", members[1], duration)).status, 400);
       const r = await send();
       assert.equal(r.status, 200);
@@ -75,7 +75,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
       );
       await reset();
       assert.equal(
-        (await send("1", members[2], 10)).data.outgoing[0].sharedReason,
+        (await send("1", members[2], 5)).data.outgoing[0].sharedReason,
         "Find teammates · Just socialize",
       );
       await reset();
@@ -122,10 +122,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
               response,
               screen: connectionScreen(response.data),
             });
-            assert.equal(
-              response.data.outgoing.length,
-              offset < 900000 ? 1 : 0,
-            );
+            assert.equal(response.data.outgoing.length, 1);
             assert.equal(
               connectionScreen(response.data),
               offset < 900000 ? "waiting" : "board",
@@ -167,7 +164,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
     "REQUIRED two authenticated clients: request -> accept -> identical point snapshot -> both arrived -> started; fresh services restore every step",
     async () => {
       await reset();
-      await send("1", members[1], 10);
+      await send("1", members[1], 5);
       const r = await pending();
       assert.equal(
         (await new ConnectionService(db, () => f.now).state(authId(1), event))
@@ -179,8 +176,8 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
         b = (await state("2")).data.session;
       assert.deepEqual(a.meetingPoint, b.meetingPoint);
       assert.equal(a.meetingPoint.label, "Point 1");
-      assert.equal(a.duration, 10);
-      assert.equal(b.duration, 10);
+      assert.equal(a.duration, 5);
+      assert.equal(b.duration, 5);
       assert.equal(
         (
           await call("PUT", `events/${event}/meeting-points`, {
@@ -243,7 +240,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
     },
   );
   await t.test(
-    "mutual sends resolve once; occupied point goes to next point, pre-start cancel releases it and restores availability; late and start anyway",
+    "mutual sends resolve once; occupied point goes to next point, pre-start cancel releases it and keeps availability paused; late and start anyway",
     async () => {
       await reset();
       const first = await send();
@@ -273,12 +270,12 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
       await session(reverse.data.session.id, "cancel", "2");
       assert.equal(
         (await state()).data.notice.message,
-        "Plans changed. You’re open to chat again.",
+        "Plans changed. Open to chat again when you’re ready.",
       );
       assert.equal((await state()).data.session, null);
       const open = (await call("GET", `events/${event}/open`, undefined, "5"))
         .data;
-      assert.ok(open.some((p) => p.participantId === members[0]));
+      assert.ok(!open.some((p) => p.participantId === members[0]));
       await send("5", members[5]);
       const rr = (await state("5")).data.outgoing[0];
       await respond(rr.id, "accept", "6");
@@ -336,7 +333,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
       const c = await call("POST", "connections/code", {
         eventId: event,
         code,
-        duration: 10,
+        duration: 5,
       });
       assert.equal(c.status, 200);
       assert.equal((await state("2")).data.incoming[0].kind, "code");
@@ -347,7 +344,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
       assert.equal(a.state, "started");
       assert.equal(a.meetingPoint, null);
       assert.deepEqual(a.meetingPoint, b.meetingPoint);
-      assert.equal(a.duration, 10);
+      assert.equal(a.duration, 5);
       await reset();
       assert.equal(
         (
@@ -532,7 +529,7 @@ test("Task 3 HTTP + PostgreSQL integration, real migrations and RLS; Auth verifi
     },
   );
   await t.test(
-    "payload allowlists; raw request/decisions denied, safe DB projection, sessions only two members, no third-party requests, blocks/reports denied; no history on expiry",
+    "payload allowlists; raw request/decisions denied, safe DB projection, sessions only two members, no third-party requests, blocks/reports denied; private history on expiry",
     async () => {
       await reset();
       await send();

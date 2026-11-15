@@ -115,3 +115,11 @@ export function buildArc(
     disclosure: ARC_COPY.disclosure,
   };
 }
+
+export function promptCategory(card: Card): string {
+  if (card.kind === "prep") return "Icebreaker";
+  if (card.kind === "close") return "Next step";
+  if (card.framing === "Help and learn") return "Complementary value";
+  if (card.framing === "A shared answer") return "Shared interest";
+  return "Professional insight";
+}
