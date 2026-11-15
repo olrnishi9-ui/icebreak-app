@@ -8,7 +8,7 @@ test("Task 4 rendered closing indistinguishability, two authenticated contexts, 
   const f = await fixture();
   t.after(() => f.pg.close());
   await f.db.query(
-    "UPDATE event_participants SET setup_complete=true WHERE event_id=$1",
+    "UPDATE event_participants SET setup_complete=true,profile_saved=true WHERE event_id=$1",
     [f.event],
   );
   for (const who of ["1", "2"])
@@ -39,7 +39,7 @@ test("Task 4 rendered closing indistinguishability, two authenticated contexts, 
       ({ id }) => {
         const token = `${btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${btoa(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + 3600 }))}.fixture`;
         localStorage.setItem(
-          "sb-task2-test-auth-token",
+          "sb-meetmates-test-auth-token",
           JSON.stringify({
             access_token: token,
             refresh_token: "fixture",
@@ -50,7 +50,7 @@ test("Task 4 rendered closing indistinguishability, two authenticated contexts, 
               id,
               aud: "authenticated",
               role: "authenticated",
-              is_anonymous: true,
+              is_anonymous: false,
               app_metadata: {},
               user_metadata: {},
               created_at: new Date().toISOString(),
@@ -84,7 +84,7 @@ test("Task 4 rendered closing indistinguishability, two authenticated contexts, 
     );
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${base}/event/${f.event}`);
+    await page.goto(`${base}/event/${f.event}?tab=${n%2?"Discover":"Requests"}`);
     return { page, context };
   }
   const a = await client(1),
@@ -190,10 +190,7 @@ test("Task 4 rendered closing indistinguishability, two authenticated contexts, 
     await A.getByRole("switch").getAttribute("aria-checked"),
     "false",
   );
-  await A.getByRole("button", {
-    name: "My People · private",
-    exact: true,
-  }).click();
+  await A.getByRole("navigation").getByRole("button",{name:"Matches",exact:true}).click();
   await visible(A, "People you met");
   assert.equal(
     await A.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

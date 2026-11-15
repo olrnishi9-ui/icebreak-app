@@ -58,7 +58,9 @@ export class ConnectionService {
     return p;
   }
   private async lock(db: DB, event: string) {
-    await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [event]);
+    await db.query("SELECT id FROM events WHERE id=$1::uuid FOR UPDATE", [
+      event,
+    ]);
   }
   async state(
     auth: string,
@@ -162,10 +164,11 @@ export class ConnectionService {
         user_id: string;
         display_name: string;
         goal: string;
+        checked_in_at: string | null;
         availability_status: string;
         available_until: string | Date | null;
       }>(
-        `SELECT user_id,display_name,goal,availability_status,available_until FROM event_participants WHERE event_id=$1::uuid AND ${byCode ? "short_code=$2" : "user_id=$2::uuid"}`,
+        `SELECT user_id,display_name,goal,checked_in_at,availability_status,available_until FROM event_participants WHERE event_id=$1::uuid AND ${byCode ? "short_code=$2" : "user_id=$2::uuid"}`,
         [event, entered ?? targetId],
       );
       if (!target) {
@@ -173,7 +176,8 @@ export class ConnectionService {
           throw new HttpError(404, "Code not found. Check it and try again.");
         return neutral();
       }
-      if (target.user_id === p.user_id) return neutral();
+      if (target.user_id === p.user_id || (!byCode && !target.checked_in_at))
+        return neutral();
       const pair = [event, p.user_id, target.user_id];
       const blocked = await db.query(
         "SELECT 1 FROM blocks WHERE event_id=$1::uuid AND ((actor_id=$2::uuid AND target_id=$3::uuid) OR (actor_id=$3::uuid AND target_id=$2::uuid))",
@@ -497,7 +501,9 @@ export class ConnectionService {
           409,
           "Meeting points are in use. Try again after sessions close.",
         );
-      await db.query("DELETE FROM meeting_points WHERE event_id=$1::uuid", [event]);
+      await db.query("DELETE FROM meeting_points WHERE event_id=$1::uuid", [
+        event,
+      ]);
       for (const [i, p] of points.entries())
         await db.query(
           "INSERT INTO meeting_points(event_id,label,photo_url,direction,position) VALUES($1::uuid,$2,$3,$4,$5)",

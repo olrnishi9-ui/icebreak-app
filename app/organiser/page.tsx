@@ -1,11 +1,30 @@
 "use client";
-import { useState } from "react";
-import { guest, api } from "../../lib/supabase";
+import { useEffect, useState } from "react";
+import { requireAccount, api, supabase } from "../../lib/supabase";
 import type { EventInvite } from "../../lib/types";
+import { EmailLogin } from "../components/email-login";
 import { Header, ErrorMessage } from "../components/shared";
 export default function Organiser() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [signed, setSigned] = useState(false);
+  useEffect(() => {
+    supabase()
+      .auth.getSession()
+      .then(({ data }) =>
+        setSigned(!!data.session && !data.session.user.is_anonymous),
+      )
+      .catch((e) => setError(e.message));
+  }, []);
+  if (!signed)
+    return (
+      <>
+        <Header />
+        <main className="narrow">
+          <EmailLogin onSuccess={async () => setSigned(true)} />
+        </main>
+      </>
+    );
   return (
     <>
       <Header />
@@ -21,7 +40,7 @@ export default function Organiser() {
               setBusy(true);
               setError("");
               try {
-                await guest();
+                await requireAccount();
                 const invite = await api<EventInvite>("/api/events", "POST", {
                   name: data.get("name"),
                   endsAt: data.get("endsAt")
@@ -48,6 +67,34 @@ export default function Organiser() {
               {busy ? "Creating…" : "Create event"}
             </button>
           </form>
+          <section className="mt-6 rounded-2xl bg-mint p-5">
+            <h2>Presenting to judges?</h2>
+            <p className="quiet">
+              Create a real event with two optional example personas and an
+              illustrated meeting point. Attendees still sign in with their own
+              email codes and check in with you.
+            </p>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  await requireAccount();
+                  const invite = await api<EventInvite>("/api/events", "POST", {
+                    demo: true,
+                  });
+                  location.assign(`/organiser/${invite.event.id}`);
+                } catch (e) {
+                  setError((e as Error).message);
+                  setBusy(false);
+                }
+              }}
+            >
+              Create judges demo
+            </button>
+          </section>
           <p className="quiet">
             Keep this browser session to return to your organiser page.
           </p>

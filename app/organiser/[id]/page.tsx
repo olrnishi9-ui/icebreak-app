@@ -1,6 +1,7 @@
 "use client";
 import { use, useEffect, useState } from "react";
 import { MeetingPointEditor } from "../../components/meeting-point-editor";
+import { CheckIn } from "../../components/check-in";
 import QRCode from "qrcode";
 import { api } from "../../../lib/supabase";
 import type { EventInvite } from "../../../lib/types";
@@ -37,6 +38,19 @@ export default function Invitation({
         <section className="panel ticket">
           <p className="eyebrow">The invitation · show it around</p>
           <h1>{invite?.event.name || "Your event"}</h1>
+          {invite?.event.demo && (
+            <div className="rounded-2xl bg-mint p-4">
+              <p className="eyebrow">Judges walkthrough</p>
+              <p className="quiet">
+                Open the invitation in two separate browsers. Sign in with two
+                real emails, choose Alex and Maya, save both profiles, then
+                check in both QR codes below.
+              </p>
+              <a className="text-link" href="/judges-demo">
+                Open the presentation guide →
+              </a>
+            </div>
+          )}
           {error ? (
             <>
               <ErrorMessage message={error} />
@@ -75,6 +89,7 @@ export default function Invitation({
             </>
           )}
         </section>
+        {invite && <CheckIn eventId={id} />}
         {invite && (
           <MeetingPointEditor
             eventId={id}

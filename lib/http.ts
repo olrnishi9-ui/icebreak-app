@@ -7,12 +7,15 @@ export type Verify = (token: string) => Promise<string | null>;
 export async function verify(token: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL,
     key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new HttpError(503, "Guest access is not configured.");
+  if (!url || !key)
+    throw new HttpError(503, "Email sign-in is not configured.");
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await c.auth.getUser(token);
-  return error ? null : (data.user?.id ?? null);
+  return error || data.user?.is_anonymous || !data.user?.email_confirmed_at
+    ? null
+    : (data.user?.id ?? null);
 }
 export function handler(
   db: DB,
@@ -45,12 +48,12 @@ export function handler(
       if (!identity)
         throw new HttpError(
           401,
-          "Your guest session is missing or expired. Reopen the event link to try again.",
+          "Your session has expired. Sign in with your email code to continue.",
         );
       let body: Record<string, unknown> = {};
       if (["POST", "PUT", "PATCH"].includes(method)) {
         const raw = await request.text();
-        if (raw.length > 20000)
+        if (raw.length > 200000)
           throw new HttpError(413, "This form is too large.");
         try {
           const v = JSON.parse(raw);
@@ -64,8 +67,26 @@ export function handler(
         return respond(await s.create(identity, body, url.origin), 201);
       if (path.join("/") === "events/join" && method === "POST")
         return respond(await s.join(identity, body));
+      if (path.join("/") === "account/resume" && method === "POST")
+        return respond(await s.resume(identity, body.code));
+      if (path.join("/") === "account/profile" && method === "POST")
+        return respond(await s.saveProfile(identity, body));
       const eventId = () =>
         uuid(url.searchParams.get("eventId") ?? body.eventId);
+      if (path.join("/") === "qr/resolve" && method === "POST")
+        return respond(await s.resolveQR(identity, eventId(), body.token));
+      if (path[0] === "events" && path[2] === "check-in" && path.length === 3) {
+        if (method === "POST")
+          return respond(await s.checkin(identity, uuid(path[1]), body));
+        if (method === "GET")
+          return respond(
+            await s.checkinSearch(
+              identity,
+              uuid(path[1]),
+              url.searchParams.get("name"),
+            ),
+          );
+      }
       const connect = new ConnectionService(db, now);
       const arc = new ArcService(db, now);
       if (path[0] === "sessions" && path.length === 3 && path[2] === "arc") {

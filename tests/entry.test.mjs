@@ -179,7 +179,7 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
         topics: ["interest", "discuss", "help", "learn", "ask_me_about"].map(
           (type) => ({
             type,
-            topic: `private ${type}`,
+            topic: type === "interest" ? "AI" : `private ${type}`,
             visible: type === "help",
           }),
         ),
@@ -283,6 +283,7 @@ test("Task 2 routes + PostgreSQL integration (Auth verifier substituted, actual 
         (await call("GET", `events/${event}/open`, undefined, "2")).data,
         [],
       );
+      await db.query("UPDATE event_participants SET checked_in_at=now() WHERE event_id=$1",[event]);
       const start = Date.now();
       let r = await call("PUT", `events/${event}/availability`, { open: true });
       assert.equal(r.status, 200);

@@ -15,7 +15,9 @@ export function ConnectionFlow({
   clearSelection,
   parentOffline = false,
   onOffline,
+  mode = "requests",
 }: {
+  mode?: "requests" | "matches";
   eventId: string;
   onFlow: (active: boolean) => void;
   selection: { participantId?: string; displayName: string } | null;
@@ -94,6 +96,7 @@ export function ConnectionFlow({
   );
   const session = state?.session;
   const active =
+    (mode !== "matches" || !!session) &&
     !!state &&
     connectionScreen(state, waitingId) !== "board" &&
     (!!session || !browse);
@@ -164,6 +167,28 @@ export function ConnectionFlow({
           </p>
         )}
         <p role="status">Restoring your connections…</p>
+      </section>
+    );
+  if (mode === "matches" && !session)
+    return (
+      <section className="panel empty">
+        <span className="hello-mark" aria-hidden="true">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+          >
+            <path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8 M16 12a4 4 0 1 0 0-8 M2 21v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3 M18 14a4 4 0 0 1 4 4v3" />
+          </svg>
+        </span>
+        <h2 className="mt-4">Your next hello is ahead</h2>
+        <p className="quiet">
+          Accepted introductions will appear here. Find someone in Discover and
+          invite them to a short conversation.
+        </p>
       </section>
     );
   return (

@@ -1,61 +1,61 @@
 "use client";
 import { use, useEffect, useState } from "react";
-import { api, guest } from "../../../lib/supabase";
-import type { Question } from "../../../lib/open-now";
+import { api, supabase } from "../../../lib/supabase";
 import type { Profile } from "../../../lib/types";
 import { Header, Loading, ErrorMessage } from "../../components/shared";
-type Basics = { id: string; name: string; status: string; active: boolean };
+import { EmailLogin } from "../../components/email-login";
+import { ProfileEditor } from "../../components/profile-editor";
 export default function Join({
   params,
 }: {
   params: Promise<{ code: string }>;
 }) {
   const { code } = use(params);
-  const [event, setEvent] = useState<Basics | null>(null),
-    [questions, setQuestions] = useState<Question[]>([]),
-    [error, setError] = useState(""),
+  const [event, setEvent] = useState<{ id: string; name: string } | null>(null),
+    [profile, setProfile] = useState<Profile | null>(null),
+    [signed, setSigned] = useState(false),
     [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false),
-    [retry, setRetry] = useState(0);
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  async function resume() {
+    const p = await api<Profile>("/api/account/resume", "POST", { code });
+    if (p.profileSaved) {
+      localStorage.setItem("icebreak-event", p.event.id);
+      location.replace(`/event/${p.event.id}?welcome=back`);
+      return;
+    }
+    setProfile({
+      ...p,
+      displayName: p.displayName ?? "",
+      role: p.role ?? "",
+      organization: p.organization ?? "",
+      industry: p.industry ?? "",
+      introduction: p.introduction ?? "",
+      photo: p.photo ?? "",
+      field: p.field ?? "",
+      funFact: p.funFact ?? "",
+      fieldVisible: p.fieldVisible ?? false,
+      funFactVisible: p.funFactVisible ?? false,
+      goal:
+        p.goal ?? p.questions.find((q) => q.kind === "event_goal")!.options[0],
+      networkingGoals: p.networkingGoals ?? [],
+      topics: p.topics ?? [],
+      answers: p.answers ?? [],
+    });
+    setSigned(true);
+  }
   useEffect(() => {
-    let live = true;
-    setLoading(true);
-    setError("");
     (async () => {
-      const response = await fetch(
-        `/api/events/${encodeURIComponent(code.toUpperCase())}`,
-        { cache: "no-store" },
-      );
-      const b = await response.json();
-      if (!response.ok) throw Error(b.error);
-      if (!b.active) throw Error("This event has ended.");
-      const r = await fetch(
-        `/api/events/${encodeURIComponent(code.toUpperCase())}/questions`,
-        { cache: "no-store" },
-      );
-      const q = await r.json();
-      if (!r.ok) throw Error(q.error);
-      if (live) {
-        setEvent(b);
-        setQuestions(q);
-      }
-      // A persisted SDK session restores membership; a fresh visitor stays on S1.
-      try {
-        const p = await api<Profile>(`/api/profile?eventId=${b.id}`);
-        if (live) {
-          localStorage.setItem("icebreak-event", b.id);
-          location.replace(`/event/${p.event.id}`);
-        }
-      } catch {
-        /* No membership is expected before joining. */
-      }
+      const r = await fetch(`/api/events/${encodeURIComponent(code)}`);
+      const e = await r.json();
+      if (!r.ok || !e.active) throw Error(e.error || "This event has ended.");
+      setEvent(e);
+      const { data } = await supabase().auth.getSession();
+      if (data.session && !data.session.user.is_anonymous) await resume();
     })()
-      .catch((e) => live && setError(e.message))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [code, retry]);
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [code]);
   return (
     <>
       <Header name={event?.name} />
@@ -63,73 +63,36 @@ export default function Join({
         <p className="eyebrow">Your invitation · {code.toUpperCase()}</p>
         {loading ? (
           <Loading label="Checking your invitation…" />
-        ) : event ? (
-          <section className="panel ticket">
-            <h1>{event.name}</h1>
-            <p>A name and a goal. Everything else can wait.</p>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const data = new FormData(e.currentTarget);
+        ) : error ? (
+          <section className="panel">
+            <ErrorMessage message={error} />
+            <a className="text-link" href="/">
+              Enter an event code →
+            </a>
+          </section>
+        ) : signed && profile ? (
+          <section className="panel">
+            <ProfileEditor
+              profile={profile}
+              busy={busy}
+              save={async (body) => {
                 setBusy(true);
-                setError("");
                 try {
-                  await guest();
-                  const p = await api<Profile>("/api/events/join", "POST", {
+                  const p = await api<Profile>("/api/account/profile", "POST", {
+                    ...body,
                     code,
-                    displayName: data.get("displayName"),
-                    goal: data.get("goal"),
                   });
                   localStorage.setItem("icebreak-event", p.event.id);
                   location.assign(`/event/${p.event.id}`);
-                } catch (e) {
-                  setError((e as Error).message);
+                } finally {
                   setBusy(false);
                 }
               }}
-            >
-              <label>
-                What should we call you?
-                <input
-                  name="displayName"
-                  required
-                  maxLength={80}
-                  autoComplete="nickname"
-                />
-              </label>
-              <label>
-                What brings you here?
-                <select name="goal" required defaultValue="">
-                  <option value="" disabled>
-                    Choose your event goal
-                  </option>
-                  {questions
-                    .find((q) => q.kind === "event_goal")
-                    ?.options.map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                </select>
-              </label>
-              <p className="quiet">
-                When you open to chat, people in this event can see your name
-                and goal.
-              </p>
-              <ErrorMessage message={error} />
-              <button disabled={busy}>
-                {busy ? "Joining…" : "Join event"}
-              </button>
-            </form>
+            />
           </section>
         ) : (
-          <section className="panel">
-            <h1>Let’s check that code.</h1>
-            <ErrorMessage message={error} />
-            <button onClick={() => setRetry(retry + 1)}>Try again</button>
-          </section>
+          <EmailLogin onSuccess={resume} />
         )}
-        <a href="/" className="text-link">
-          Join with code instead →
-        </a>
       </main>
     </>
   );

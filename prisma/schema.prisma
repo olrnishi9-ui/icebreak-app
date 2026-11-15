@@ -67,7 +67,7 @@ model users {
   auth_id          String?              @unique @db.Uuid
   display_name     String               @db.VarChar(80)
   bio              String?
-  is_guest         Boolean              @default(true)
+  is_guest         Boolean              @default(false)
   created_at       DateTime             @default(now()) @db.Timestamptz(6)
 }
 
@@ -77,6 +77,8 @@ model events {
   meeting_points meeting_points[]
   questions    questions[]          @relation("relation_3_event")
   id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  is_demo Boolean @default(false)
+  interest_tags String[] @default(["AI","Finance","Energy","Sustainability","M&A","Technology","Design","Research"])
   event_code   String               @unique @db.VarChar(16)
   name         String
   status       EventStatus          @default(draft)
@@ -117,6 +119,15 @@ model event_participants {
   setup_complete      Boolean               @default(false)
   opened_at           DateTime?             @db.Timestamptz(6)
   short_code          String @default(dbgenerated("upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8))")) @db.VarChar(8)
+  role String @default("") @db.VarChar(120)
+  organization String @default("") @db.VarChar(160)
+  industry String @default("") @db.VarChar(160)
+  introduction String @default("") @db.VarChar(500)
+  photo String @default("")
+  networking_goals String[] @default([])
+  profile_saved Boolean @default(false)
+  checked_in_at DateTime? @db.Timestamptz(6)
+  qr_token String? @unique @db.VarChar(64)
   joined_at           DateTime              @default(now()) @db.Timestamptz(6)
 
   @@id([event_id, user_id])
