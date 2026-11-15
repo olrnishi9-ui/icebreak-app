@@ -19,7 +19,7 @@ export class ShowService {
       await this.seed(tx);
       const id = await new EntryService(tx, this.now).user(auth);
       await tx.query(
-        "UPDATE users SET demo_email_label=$2,is_guest=true WHERE id=$1",
+        "UPDATE users SET demo_email_label=$2,is_guest=true WHERE id=$1::uuid",
         [id, email],
       );
     });
@@ -37,7 +37,7 @@ export class ShowService {
       const s = new EntryService(tx, this.now);
       const userId = await s.user(auth);
       const [u] = await tx.query<{ demo_email_label: string }>(
-        "SELECT demo_email_label FROM users WHERE id=$1",
+        "SELECT demo_email_label FROM users WHERE id=$1::uuid",
         [userId],
       );
       const name =
@@ -45,7 +45,7 @@ export class ShowService {
       const timestamp = new Date(this.now()).toISOString();
       const inserted = await tx.query(
         `INSERT INTO event_participants(event_id,user_id,display_name,goal,role,profile_saved,setup_complete,checked_in_at,qr_token,availability_status,available_until,opened_at)
-        VALUES($1,$2,$3,'Explore something new','Attendee',true,true,$4,$5,'open',$6,$4)
+        VALUES($1::uuid,$2::uuid,$3,'Explore something new','Attendee',true,true,$4::timestamptz,$5,'open',$6::timestamptz,$4::timestamptz)
         ON CONFLICT(event_id,user_id) DO NOTHING RETURNING user_id`,
         [
           showEventId,
@@ -62,7 +62,7 @@ export class ShowService {
           ["learn", "People"],
         ])
           await tx.query(
-            `INSERT INTO user_interests(event_id,user_id,interest_type,topic,share_consent) VALUES($1,$2,$3::"InterestType",$4,true)`,
+            `INSERT INTO user_interests(event_id,user_id,interest_type,topic,share_consent) VALUES($1::uuid,$2::uuid,$3::"InterestType",$4,true)`,
             [showEventId, userId, type, topic],
           );
     });
